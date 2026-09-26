@@ -251,6 +251,10 @@ table.t .name { max-width: 340px; overflow: hidden; text-overflow: ellipsis; whi
 .fstep .fb { height: 26px; border-radius: 7px; background: var(--s1); display: flex; align-items: center; padding: 0 8px; color: #fff; font-weight: 600; font-size: 12px; min-width: 34px; }
 .fstep .fb.s2 { background: var(--s3); }
 .fstep .fb.s4 { background: var(--brand); color: var(--brand-ink); }
+.cell-edit { border: 1px dashed var(--line-2); background: var(--surface-2); border-radius: 7px; padding: 3px 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cell-edit:hover { border-color: var(--s1); background: var(--surface); }
+.cell-edit svg { width: 13px; height: 13px; color: var(--ink-3); }
+.ad-pop { text-align: left; font-weight: 400; }
 .warn-t { color: var(--warn); font-weight: 600; }
 .fstep .fb.s3 { background: var(--bar-neg); color: var(--ink); }
 
@@ -1197,7 +1201,7 @@ PAGES.days = async (seq) => {
     ['Дата', (r) => `<b>${fdate(r.d)}</b> <span class="muted small">${['нд', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'][P(r.d).getUTCDay()]}</span>`],
     ['Заявки', (r) => int(r.leads), 1], ['Підтв.', (r) => `<b>${int(r.confirmed)}</b>`, 1], ['Не підтв.', (r) => (r.unconfirmed ? `<span class="warn-t">${int(r.unconfirmed)}</span>` : '0'), 1], ['% підтв.', (r) => pct(r.confRate, 0), 1], ['Продажі', (r) => int(r.sales), 1], ['Відмови', (r) => (r.fail ? `<span class="neg">${int(r.fail)}</span>` : '0'), 1], ['Повер.', (r) => int(r.returns), 1],
     ['Конверсія', (r) => pct(r.conv, 0), 1], ['Виручка', (r) => uah(r.revenue), 1], ['Собівартість', (r) => uah(r.cogs), 1], ['Валовий', (r) => uah(r.gross), 1],
-    ['Реклама', (r) => uah(r.ads), 1], ['Інші витрати', (r) => uah(r.other), 1], ['Чистий прибуток', (r) => `<b class="${r.net < 0 ? 'neg' : ''}">${uah(r.net)}</b>`, 1], ['Ціна продажу', (r) => uah(r.cpo), 1],
+    ['Реклама', (r) => (r.d ? `<button class="cell-edit" data-adday="${r.d}" title="Натисніть, щоб внести рекламу за цей день">${r.ads ? uah(r.ads) : '<span class="muted">+ внести</span>'}${icon('edit')}</button>` : uah(r.ads)), 1], ['Інші витрати', (r) => uah(r.other), 1], ['Чистий прибуток', (r) => `<b class="${r.net < 0 ? 'neg' : ''}">${uah(r.net)}</b>`, 1], ['Ціна продажу', (r) => uah(r.cpo), 1],
   ];
   $('#page').innerHTML = `
   <div class="kpis">
@@ -1211,10 +1215,67 @@ PAGES.days = async (seq) => {
   <section class="card"><div class="card-h"><div><h2 class="card-t">Щоденний звіт</h2><div class="card-s">Реклама й витрати, внесені за період, розподілені по днях</div></div><button class="btn sm" id="csv">${icon('dl')}CSV</button></div>
     <div class="tw tbl-scroll"><table class="t"><thead><tr>${cols.map((c) => `<th class="${c[2] ? 'n' : ''}">${c[0]}</th>`).join('')}</tr></thead>
     <tbody>${rows.map((r) => `<tr>${cols.map((c) => `<td class="${c[2] ? 'n' : ''}">${c[1](r)}</td>`).join('')}</tr>`).join('')}</tbody>
-    <tfoot><tr>${cols.map((c, i) => `<td class="${c[2] ? 'n' : ''}">${i === 0 ? 'Разом' : c[1]({ d: S.to, ...T })}</td>`).join('')}</tr></tfoot></table></div></section>`;
+    <tfoot><tr>${cols.map((c, i) => `<td class="${c[2] ? 'n' : ''}">${i === 0 ? 'Разом' : c[1]({ d: '', ...T })}</td>`).join('')}</tr></tfoot></table></div></section>`;
+  $('#page').addEventListener('click', (e) => { const b = e.target.closest('[data-adday]'); if (b) openAdCell(b, b.dataset.adday, D); });
   $('#csv').addEventListener('click', () => downloadCsv(`dni_${S.from}_${S.to}.csv`, ['Дата', 'Заявки', 'Підтверджені', 'Не підтверджені', 'Продажі', 'Відмови', 'Повернення', 'Виручка', 'Собівартість', 'Доставка/комісії', 'Валовий', 'Реклама', 'Інші витрати', 'Чистий'],
     rows.map((r) => [r.d, r.leads, r.confirmed, r.unconfirmed, r.sales, r.fail, r.returns, r.revenue.toFixed(2), r.cogs.toFixed(2), r.order_costs.toFixed(2), r.gross.toFixed(2), r.ads.toFixed(2), r.other.toFixed(2), r.net.toFixed(2)])));
 };
+
+// Швидке внесення реклами прямо в таблиці «По днях»
+const QUICK = 'По днях';
+function openAdCell(btn, day, D) {
+  document.querySelector('.ad-pop')?.remove();
+  const targets = S.store != null ? activeStores().filter((x) => x.id === S.store) : activeStores();
+  const list = targets.length ? targets : [{ id: null, name: 'Реклама' }];
+  const cur = store.get('adCur', 'USD'), ch = store.get('adCh', (S.settings.ad_channels || ['Meta'])[0]);
+  const quickFor = (id) => D.expenses.find((e) => e.category === 'Реклама' && e.comment === QUICK && e.date === day && !e.date_to && (e.store_id ?? null) === id && (e.channel || '') === ch);
+  const otherAds = (id) => D.expenses.filter((e) => e.category === 'Реклама' && (e.store_id ?? null) === id && e.date <= day && (e.date_to || e.date) >= day && e !== quickFor(id)).length;
+  const pop = document.createElement('div'); pop.className = 'pop ad-pop';
+  pop.innerHTML = `<div style="padding:6px 6px 2px"><div style="font-weight:650">Реклама за ${fdate(day)}</div><div class="muted small">Сума за день по кожному магазину</div></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px 6px">
+      <label class="f">Канал<select id="apCh">${(S.settings.ad_channels || ['Meta']).map((c) => `<option ${c === ch ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
+      <label class="f">Валюта<select id="apCur">${['USD', 'UAH', 'EUR'].map((c) => `<option ${c === cur ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
+    </div>
+    <div id="apRows" style="display:flex;flex-direction:column;gap:8px;padding:0 6px 8px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;padding:4px 6px 6px"><button class="btn sm" id="apCancel">Скасувати</button><button class="btn sm primary" id="apSave">Зберегти</button></div>`;
+  const drawRows = () => {
+    const chv = $('#apCh', pop).value;
+    $('#apRows', pop).innerHTML = list.map((x) => {
+      const q = D.expenses.find((e) => e.category === 'Реклама' && e.comment === QUICK && e.date === day && !e.date_to && (e.store_id ?? null) === x.id && (e.channel || '') === chv);
+      const others = otherAds(x.id);
+      return `<label class="f">${esc(x.name || 'Сайт #' + x.id)}${others ? ` <span class="muted small">(ще є ${others} запис(и) реклами на цей день)</span>` : ''}<input type="text" inputmode="decimal" data-ap="${x.id ?? ''}" data-eid="${q?.id ?? ''}" value="${q ? nf2.format(N(q.amount)).replace(/\s/g, '') : ''}" placeholder="0"></label>`;
+    }).join('');
+    $('#apRows input', pop)?.focus();
+  };
+  document.body.appendChild(pop);
+  pop.style.position = 'fixed'; pop.style.width = '300px'; pop.style.zIndex = '60';
+  drawRows();
+  const rc = btn.getBoundingClientRect(), ph = pop.offsetHeight;
+  pop.style.left = Math.max(8, Math.min(rc.right - 300, innerWidth - 308)) + 'px';
+  pop.style.top = (rc.bottom + 6 + ph > innerHeight ? Math.max(8, rc.top - ph - 6) : rc.bottom + 6) + 'px';
+  const onScroll = () => close(); window.addEventListener('scroll', onScroll, { once: true, capture: true });
+  $('#apCh', pop).addEventListener('change', drawRows);
+  const close = () => pop.remove();
+  $('#apCancel', pop).addEventListener('click', close);
+  pop.addEventListener('click', (e) => e.stopPropagation());
+  pop.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); if (e.key === 'Enter') $('#apSave', pop).click(); });
+  $('#apSave', pop).addEventListener('click', async () => {
+    const chv = $('#apCh', pop).value, curv = $('#apCur', pop).value;
+    store.set('adCh', chv); store.set('adCur', curv);
+    try {
+      for (const inp of $$('[data-ap]', pop)) {
+        const v = parseFloat(inp.value.replace(/\s/g, '').replace(',', '.'));
+        const id = inp.dataset.eid ? N(inp.dataset.eid) : null;
+        const storeId = inp.dataset.ap === '' ? null : N(inp.dataset.ap);
+        if (!Number.isFinite(v) || v <= 0) { if (id) await api.remove('expenses', id); continue; }
+        const row = { date: day, date_to: null, category: 'Реклама', channel: chv, amount: v, currency: curv, rate: rateFor(curv), comment: QUICK, store_id: storeId };
+        if (id) await api.update('expenses', id, row); else await api.insert('expenses', row);
+      }
+      close(); S.data = null; toast('Рекламу збережено'); render();
+    } catch (e) { toast(e.message, true); }
+  });
+  setTimeout(() => document.addEventListener('click', function h(ev) { if (!pop.contains(ev.target)) { close(); document.removeEventListener('click', h); } }), 0);
+}
 
 // ================================================================ ПО МІСЯЦЯХ
 PAGES.months = async (seq) => {
