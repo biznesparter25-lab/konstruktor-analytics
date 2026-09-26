@@ -359,6 +359,10 @@ tr.shared td b { color: var(--ink-3); }
 .limbar i { display: block; height: 100%; border-radius: 4px; background: var(--s3); }
 .limbar i.warn { background: var(--warn); }
 .limbar i.bad { background: var(--bad); }
+.taxpaid { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0; padding: 10px 12px; border-radius: 10px; border: 1.5px solid var(--warn); background: var(--warn-bg); cursor: pointer; font-size: 13px; }
+.taxpaid input { width: 18px; height: 18px; margin: 1px 0 0; accent-color: var(--good); flex: none; cursor: pointer; }
+.taxpaid .small { color: var(--ink-2); }
+.taxpaid.on { border-color: var(--good); background: var(--good-bg); }
 
 </style>
 </head>
@@ -640,6 +644,7 @@ function createDemoApi() {
     async rpc(name, params) { return clone(R[name](params)); },
     async list(table, opts = {}) {
       let rows = tables[table];
+      for (const [k, v] of Object.entries(opts.eq || {})) rows = rows.filter((r) => r[k] === v);
       if ((table === 'expenses' || table === 'payouts') && opts.from) rows = rows.filter((e) => e.date <= opts.to && (e.date_to || e.date) >= opts.from);
       if (table === 'payouts') rows = [...rows].sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
       if (table === 'people' || table === 'fops') rows = [...rows].sort((a, b) => a.sort - b.sort || a.id - b.id);
@@ -770,6 +775,7 @@ function createLiveApi() {
     async rpc(name, params) { return chk(await sb.rpc(name, params)); },
     async list(table, opts = {}) {
       let q = sb.from(table).select('*');
+      for (const [k, v] of Object.entries(opts.eq || {})) q = q.eq(k, v);
       if ((table === 'expenses' || table === 'payouts') && opts.from) q = q.lte('date', opts.to).gte('date', addDays(opts.from, -400));
       const [col, asc] = ORDER[table] || ['id', true];
       q = q.order(col, { ascending: asc });
@@ -966,15 +972,13 @@ const WFP_CAT = 'Комісія WayForPay';
 // Правила для команди з фіксованою сумою на місяць (власники в прибуток не входять)
 const teamRules = () => (S.people || []).filter((p) => p.role === 'team' && p.pay_kind === 'fixed_monthly' && p.active !== false && N(p.value))
   .map((p) => ({ id: 'p' + p.id, name: p.name, kind: 'fixed_monthly', value: N(p.value), category: TEAM_CAT, store_id: p.store_id ?? null, active: true }));
-// Податки ФОП (2 група — фіксовані суми на місяць) як щомісячні правила магазину ФОПа
+// Податки ФОП: сума на місяць; у звіти потрапляють як витрата в день, коли відмічено «сплачено»
 const TAX_CAT = 'Податки';
 const fopMonthly = (f) => N(f.single_tax) + N(f.esv) + N(f.military) + N(f.other);
-const fopRules = () => (S.fops || []).filter((f) => f.active !== false && fopMonthly(f))
-  .map((f) => ({ id: 'f' + f.id, name: f.name, kind: 'fixed_monthly', value: fopMonthly(f), category: TAX_CAT, store_id: f.store_id ?? null, active: true }));
 const payoutsAsExpenses = (list) => list.filter((x) => { const p = (S.people || []).find((q) => q.id === N(x.person_id)); return !p || p.role !== 'owner'; })
   .map((x) => ({ ...x, id: 'po' + x.id, category: TEAM_CAT, channel: null }));
 async function fetchDays(from, to, st = S.store) {
-  const rules = scopeRules([...S.rules, ...teamRules(), ...fopRules()], st);
+  const rules = scopeRules([...S.rules, ...teamRules()], st);
   const needStores = st == null ? [...new Set(rules.filter((r) => r.active && r.store_id != null && r.kind !== 'fixed_monthly').map((r) => N(r.store_id)))] : [];
   const pr = { p_from: from, p_to: to, p_fin: fin(), p_store: st };
   const hasPay = rules.some((r) => r.active && r.kind === 'percent_payment');
@@ -1289,7 +1293,7 @@ PAGES.stores = async (seq) => {
   const [res, expAll, payAll] = await Promise.all([Promise.all(list.map((x) => fetchDays(S.from, S.to, x.id))), api.list('expenses', { from: S.from, to: S.to }), api.list('payouts', { from: S.from, to: S.to }).catch(() => [])]);
   if (seq !== renderSeq) return;
   // Загальні витрати: записи без магазину + загальні щомісячні правила
-  const genDays = buildDays(S.from, S.to, [], [...expAll, ...payoutsAsExpenses(payAll)].filter((e) => e.store_id == null), [...S.rules, ...teamRules(), ...fopRules()].filter((r) => r.store_id == null && r.kind === 'fixed_monthly'), [], [], { managers_in_pnl: false });
+  const genDays = buildDays(S.from, S.to, [], [...expAll, ...payoutsAsExpenses(payAll)].filter((e) => e.store_id == null), [...S.rules, ...teamRules()].filter((r) => r.store_id == null && r.kind === 'fixed_monthly'), [], [], { managers_in_pnl: false });
   const G = totals(Object.values(genDays)); const general = G.ads + G.other;
   const rows = list.map((x, i) => ({ st: x, days: res[i].days, T: totals(Object.values(res[i].days)), color: storeColor(x.id) }));
   const split = splitN() > 0; // загальні вже розподілені по картках магазинів
@@ -1932,11 +1936,10 @@ PAGES.fop = async (seq) => {
   $('#fopM').addEventListener('change', (e) => { S.fopMonth = e.target.value || nowM; render(); });
   const [from, to, monthEnd] = monthRange(m);
   const yFrom = m.slice(0, 4) + '-01-01';
-  const [inc, incY, senders] = await Promise.all([api.rpc('fop_income', { p_from: from, p_to: to }), api.rpc('fop_income', { p_from: yFrom, p_to: to }), api.rpc('fop_senders')]);
+  const [inc, incY, senders, paidRows] = await Promise.all([api.rpc('fop_income', { p_from: from, p_to: to }), api.rpc('fop_income', { p_from: yFrom, p_to: to }), api.rpc('fop_senders'), api.list('expenses', { eq: { fop_period: m } }).catch(() => [])]);
   if (seq !== renderSeq) return;
   const fops = S.fops || [];
   const wfpFop = S.settings.wfp_fop == null ? null : N(S.settings.wfp_fop);
-  const days = daysBetween(from, to) + 1, dimM = daysBetween(from, monthEnd) + 1;
   const incomeOf = (rows, f) => {
     let cod = 0, wfp = 0, cnt = 0;
     for (const r of rows || []) {
@@ -1953,15 +1956,19 @@ PAGES.fop = async (seq) => {
     const lim = N(f.year_limit), share = lim ? ytd / lim : null;
     const lvl = share == null ? '' : share >= 0.9 ? 'bad' : share >= 0.8 ? 'warn' : 'good';
     const monthTax = fopMonthly(f);
-    return { f, mi, ytd, lim, share, lvl, monthTax, taxSoFar: f.active === false ? 0 : monthTax * days / dimM };
+    const paid = (paidRows || []).find((e) => N(e.fop_id) === f.id) || null;
+    return { f, mi, ytd, lim, share, lvl, monthTax, paid };
   });
-  const taxTotal = cards.reduce((a, c) => a + (c.f.active === false ? 0 : c.monthTax), 0);
+  const due = cards.filter((c) => c.f.active !== false || c.paid);
+  const paidSum = due.reduce((a, c) => a + (c.paid ? N(c.paid.amount_uah) : 0), 0);
+  const leftCards = due.filter((c) => !c.paid && c.monthTax);
+  const leftSum = leftCards.reduce((a, c) => a + c.monthTax, 0);
+  const mName = MONTHS[+m.slice(5, 7) - 1].toLowerCase();
   const oldRules = S.rules.filter((r) => r.active && /податок|єсв|есв|податк|військов/i.test(`${r.name} ${r.category}`));
-  const partial = to < monthEnd;
   $('#page').innerHTML = `
   <div class="kpis">
-    <div class="kpi hero"><div class="kpi-l"><span>Податки ФОП за ${MONTHS[+m.slice(5, 7) - 1].toLowerCase()}</span></div><div class="kpi-v">${uah(taxTotal)}</div><div class="kpi-s">${fops.filter((f) => f.active !== false).length} ФОП · віднімається з прибутку магазинів рівномірно по днях${partial ? ` · на сьогодні ${uah(cards.reduce((a, c) => a + c.taxSoFar, 0))}` : ''}</div></div>
-    ${activeStores().map((st) => kpi(`Податки ${esc(st.name || '#' + st.id)}`, uah(cards.filter((c) => c.f.active !== false && N(c.f.store_id) === st.id && c.f.store_id != null).reduce((a, c) => a + c.monthTax, 0)), cards.filter((c) => N(c.f.store_id) === st.id && c.f.store_id != null).map((c) => esc(c.f.name)).join(' · ') || 'немає ФОП')).join('')}
+    <div class="kpi hero"><div class="kpi-l"><span>Податки ФОП за ${mName}</span></div><div class="kpi-v">${uah(paidSum)}</div><div class="kpi-s">сплачено · ${due.filter((c) => c.paid).length} з ${due.length} ФОП${leftSum ? ` · лишилось ${uah(leftSum)} — ${leftCards.map((c) => esc(c.f.name)).join(', ')}` : due.length ? ' · усе сплачено' : ''}</div></div>
+    ${activeStores().map((st) => { const mine = due.filter((c) => c.f.store_id != null && N(c.f.store_id) === st.id); return kpi(`Податки ${esc(st.name || '#' + st.id)}`, uah(mine.reduce((a, c) => a + c.monthTax, 0)), mine.length ? `сплачено ${mine.filter((c) => c.paid).length} з ${mine.length} · ${mine.map((c) => esc(c.f.name)).join(' · ')}` : 'немає ФОП'); }).join('')}
     ${kpi('Дохід за місяць', uah(cards.reduce((a, c) => a + c.mi.total, 0)), unassigned ? `<span class="warn-t">ще ${uah(unassigned)} не розподілено по ФОП</span>` : 'отримані гроші')}
   </div>
   ${fops.length && oldRules.length ? `<div class="hint warn" style="margin-bottom:14px">У Витратах увімкнені правила, схожі на податки: <b>${oldRules.map((r) => esc(r.name)).join(', ')}</b>. Податки ФОП тепер рахуються тут. Вимкніть ці правила, щоб податок не віднімався двічі. <button class="btn sm" data-go="expenses" style="margin-left:6px">До правил</button></div>` : ''}
@@ -1971,6 +1978,9 @@ PAGES.fop = async (seq) => {
       <div class="stat-list">
         <div class="stat-row"><span>Податки на місяць</span><b>${uah(c.monthTax)}</b></div>
         ${[['Єдиний податок', c.f.single_tax], ['ЄСВ', c.f.esv], ['Військовий збір', c.f.military], ['Інше', c.f.other]].filter(([, v]) => N(v)).map(([t, v]) => `<div class="stat-row sub"><span>${t}</span><b>${uah(N(v))}</b></div>`).join('')}
+      </div>
+      ${c.monthTax || c.paid ? `<label class="taxpaid ${c.paid ? 'on' : ''}"><input type="checkbox" data-fpay="${c.f.id}" ${c.paid ? 'checked' : ''}><span><b>Податки за ${mName} сплачено</b><br><span class="small">${c.paid ? `${uah(N(c.paid.amount_uah))} · ${fdate(c.paid.date)}${c.paid.created_by ? ' · ' + esc(c.paid.created_by.split('@')[0]) : ''}` : uah(c.monthTax)}</span></span></label>` : ''}
+      <div class="stat-list">
         <div class="stat-row"><span>Дохід за місяць</span><b>${uah(c.mi.total)}</b></div>
         ${c.mi.wfp ? `<div class="stat-row sub"><span>накладений платіж</span><b>${uah(c.mi.cod)}</b></div><div class="stat-row sub"><span>WayForPay</span><b>${uah(c.mi.wfp)}</b></div>` : ''}
         <div class="stat-row"><span>Дохід з початку року</span><b>${uah(c.ytd)}</b></div>
@@ -1985,7 +1995,7 @@ PAGES.fop = async (seq) => {
     ${fops.length ? '' : '<section class="card"><div class="empty">Додайте ФОПи у формі нижче</div></section>'}
   </div>
   <div class="grid" style="margin-top:14px">
-    <section class="card c7"><div class="card-h"><div><h2 class="card-t" id="fopFormT">Додати ФОП</h2><div class="card-s">Суми на місяць для 2-ї групи. Податки віднімаються з прибутку обраного магазину.</div></div></div>
+    <section class="card c7"><div class="card-h"><div><h2 class="card-t" id="fopFormT">Додати ФОП</h2><div class="card-s">Суми на місяць для 2-ї групи. Коли відмітите «сплачено», сума віднімається з прибутку обраного магазину в цей день.</div></div></div>
       <form class="form" id="fopForm">
         <label class="f">Назва<input type="text" name="name" required placeholder="ФОП Семенюк"></label>
         <label class="f">Відправник у накладних<select name="sender_id"><option value="">—</option>${(senders || []).map((x) => `<option value="${esc(x.sender)}">№${esc(x.sender)} · ${int(N(x.cnt))} заявок${x.sajt != null ? ' · ' + esc(storeLabel(x.sajt)) : ''}</option>`).join('')}</select></label>
@@ -2006,6 +2016,22 @@ PAGES.fop = async (seq) => {
       <div class="muted small" style="margin-top:6px">Передоплата WayForPay зараховується в дохід цього ФОПа, решта суми замовлення (накладений платіж) — ФОПу-відправнику.</div></section>
   </div>`;
   $$('[data-go]').forEach((b) => b.addEventListener('click', () => go(b.dataset.go)));
+  $$('[data-fpay]').forEach((cb) => cb.addEventListener('change', async () => {
+    const c = cards.find((x) => x.f.id === N(cb.dataset.fpay)); if (!c) return;
+    cb.disabled = true;
+    try {
+      if (cb.checked) {
+        await api.insert('expenses', { date: ymd(new Date()), date_to: null, category: TAX_CAT, channel: null, amount: c.monthTax, currency: 'UAH', rate: 1,
+          comment: `${c.f.name}: податки за ${mName} ${m.slice(0, 4)}`, store_id: c.f.store_id ?? null, fop_id: c.f.id, fop_period: m });
+        toast(`Податки ${c.f.name} за ${mName} — сплачено`);
+      } else {
+        if (!(await confirmBox('Зняти позначку «сплачено»?', 'Витрату на податки буде видалено зі звітів.', 'Зняти'))) { cb.checked = true; cb.disabled = false; return; }
+        if (c.paid) await api.remove('expenses', N(c.paid.id));
+        toast('Позначку знято');
+      }
+      S.data = null; render();
+    } catch (err) { toast(err.message, true); cb.checked = !cb.checked; cb.disabled = false; }
+  }));
   $('#wfpFop').addEventListener('change', async (e) => {
     const v = e.target.value === '' ? null : N(e.target.value);
     try { await api.setSetting('wfp_fop', v); S.settings.wfp_fop = v; toast('Збережено'); render(); } catch (err) { toast(err.message, true); }

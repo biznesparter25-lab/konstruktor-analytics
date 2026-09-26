@@ -204,7 +204,12 @@ insert into settings(key, value) values
   ('backfill_page',      '1')
 on conflict (key) do nothing;
 
--- ФОПи: фіксовані податки 2-ї групи (віднімаються з прибутку свого магазину) і контроль річного ліміту
+-- Оплата податків ФОП: галочка «сплачено» створює витрату з прив'язкою до ФОП і місяця
+alter table expenses add column if not exists fop_id bigint;
+alter table expenses add column if not exists fop_period text;   -- 'РРРР-ММ'
+create unique index if not exists expenses_fop_period_uq on expenses (fop_id, fop_period) where fop_id is not null;
+
+-- ФОПи: податки 2-ї групи (віднімаються, коли в дашборді відмічено «сплачено») і контроль річного ліміту
 -- sender_id — номер відправника в накладних SalesDrive (delivery_json.senderId)
 create table if not exists fops (
   id            bigserial primary key,
