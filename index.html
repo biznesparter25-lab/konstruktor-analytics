@@ -412,7 +412,7 @@ function createDemoApi() {
   const expenses = []; let eid = 1;
   const settings = {
     finance_date: 'order', usd_rate: 41.5, eur_rate: 45, store_name: 'Магазин конструкторів',
-    expense_categories: ['Реклама', 'Податки', 'SMS-розсилки', 'Зарплата', 'Оренда / склад', 'Пакування', 'Сервіси (CRM, сайт)', 'Банк / еквайринг', 'Інше'],
+    expense_categories: ['Реклама', 'Податки', 'SMS-розсилки', 'Оренда / склад', 'Пакування', 'Сервіси (CRM, сайт)', 'Банк / еквайринг', 'Інше'],
     ad_channels: ['Meta', 'Google', 'TikTok', 'Блогери', 'Розсилки', 'Інше'],
     targets: { romi: 1.0, cpo: 300, conversion: 0.6 }, managers_in_pnl: true,
     backfill_done: true, last_sync: new Date(Date.now() - 6 * 60e3).toISOString(), last_run: new Date(Date.now() - 6 * 60e3).toISOString(),
@@ -532,7 +532,19 @@ function createDemoApi() {
         sites: stores.map((st) => ({ id: st.id, orders: orders.filter((o) => o.sajt === st.id).length })) };
     },
   };
-  const tables = { statuses, stores, managers, expenses, rules, sync_log: syncLog };
+  const people = [
+    { id: 1, name: 'Віктор', role: 'owner', pay_kind: 'percent_profit', value: 30, store_id: null, active: true, sort: 0 },
+    { id: 2, name: 'Владислав', role: 'owner', pay_kind: 'percent_profit', value: 30, store_id: null, active: true, sort: 1 },
+    { id: 3, name: 'Олена (UGC)', role: 'team', pay_kind: 'manual', value: 0, store_id: null, active: true, sort: 2 },
+    { id: 4, name: 'Дизайнер', role: 'team', pay_kind: 'fixed_monthly', value: 5000, store_id: null, active: true, sort: 3 },
+  ];
+  const payouts = [];
+  for (let mm = new Date(start.getFullYear(), start.getMonth(), 1); mm <= today; mm.setMonth(mm.getMonth() + 1)) {
+    const d1 = new Date(mm.getFullYear(), mm.getMonth(), 8), d2 = new Date(mm.getFullYear(), mm.getMonth(), 20);
+    if (d1 <= today) payouts.push({ id: eid++, person_id: 3, date: ymdL(d1), date_to: null, store_id: 21, amount: 4500, currency: 'UAH', rate: 1, amount_uah: 4500, comment: '3 відео для реклами', created_by: 'viktor@shop.ua' });
+    if (d2 <= today) payouts.push({ id: eid++, person_id: 3, date: ymdL(d2), date_to: null, store_id: 22, amount: 60, currency: 'USD', rate: 41.5, amount_uah: 2490, comment: 'Розпаковка', created_by: 'vlad@shop.ua' });
+  }
+  const tables = { statuses, stores, managers, expenses, rules, people, payouts, sync_log: syncLog };
   const clone = (x) => JSON.parse(JSON.stringify(x));
   return {
     mode: 'demo',
@@ -544,7 +556,9 @@ function createDemoApi() {
     async rpc(name, params) { return clone(R[name](params)); },
     async list(table, opts = {}) {
       let rows = tables[table];
-      if (table === 'expenses' && opts.from) rows = rows.filter((e) => e.date <= opts.to && (e.date_to || e.date) >= opts.from);
+      if ((table === 'expenses' || table === 'payouts') && opts.from) rows = rows.filter((e) => e.date <= opts.to && (e.date_to || e.date) >= opts.from);
+      if (table === 'payouts') rows = [...rows].sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
+      if (table === 'people') rows = [...rows].sort((a, b) => a.sort - b.sort || a.id - b.id);
       if (table === 'expenses') rows = [...rows].sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
       if (table === 'statuses' || table === 'stores') rows = [...rows].sort((a, b) => a.sort - b.sort);
       return clone(rows);
@@ -552,13 +566,13 @@ function createDemoApi() {
     async insert(table, row) {
       const t = tables[table];
       const r = { ...row, id: table === 'rules' ? rid++ : eid++ };
-      if (table === 'expenses') r.amount_uah = Math.round(r.amount * (r.rate || 1) * 100) / 100;
+      if (table === 'expenses' || table === 'payouts') r.amount_uah = Math.round(r.amount * (r.rate || 1) * 100) / 100;
       t.push(r); return r;
     },
     async update(table, idv, patch) {
       const r = tables[table].find((x) => x.id === idv);
       Object.assign(r, patch);
-      if (table === 'expenses') r.amount_uah = Math.round(r.amount * (r.rate || 1) * 100) / 100;
+      if (table === 'expenses' || table === 'payouts') r.amount_uah = Math.round(r.amount * (r.rate || 1) * 100) / 100;
       return r;
     },
     async remove(table, idv) { const t = tables[table]; t.splice(t.findIndex((x) => x.id === idv), 1); },
@@ -631,6 +645,7 @@ function confirmBox(title, text, okLabel = 'Видалити') {
 // ---------------------------------------------------------------- іконки
 const I = {
   shop: '<path d="M4 9 5.5 4h13L20 9"/><path d="M4 9h16v2a3 3 0 0 1-5.3 1.9A3 3 0 0 1 12 14a3 3 0 0 1-2.7-1.1A3 3 0 0 1 4 11z"/><path d="M5 13.5V20h14v-6.5M10 20v-4h4v4"/>',
+  coin: '<circle cx="12" cy="12" r="9"/><path d="M14.8 9.2c-.5-.8-1.5-1.2-2.8-1.2-1.7 0-2.8.8-2.8 2s1.1 1.7 2.8 2 2.8.8 2.8 2-1.1 2-2.8 2c-1.3 0-2.3-.4-2.8-1.2M12 6v2M12 16v2"/>',
   home: '<path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/>',
   days: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
   months: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
@@ -655,7 +670,7 @@ const LOGO = `<svg class="logo-mark" viewBox="0 0 34 34" aria-hidden="true"><rec
 function createLiveApi() {
   const sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
   const chk = ({ data, error }) => { if (error) throw new Error(error.message || String(error)); return data; };
-  const ORDER = { expenses: ['date', false], statuses: ['sort', true], stores: ['sort', true], managers: ['id', true], rules: ['id', true], sync_log: ['id', false] };
+  const ORDER = { people: ['sort', true], payouts: ['date', false], expenses: ['date', false], statuses: ['sort', true], stores: ['sort', true], managers: ['id', true], rules: ['id', true], sync_log: ['id', false] };
   return {
     mode: 'live',
     async session() { const { data } = await sb.auth.getSession(); return data.session ? { email: data.session.user.email } : null; },
@@ -666,13 +681,13 @@ function createLiveApi() {
     async rpc(name, params) { return chk(await sb.rpc(name, params)); },
     async list(table, opts = {}) {
       let q = sb.from(table).select('*');
-      if (table === 'expenses' && opts.from) q = q.lte('date', opts.to).gte('date', addDays(opts.from, -400));
+      if ((table === 'expenses' || table === 'payouts') && opts.from) q = q.lte('date', opts.to).gte('date', addDays(opts.from, -400));
       const [col, asc] = ORDER[table] || ['id', true];
       q = q.order(col, { ascending: asc });
-      if (table === 'expenses') q = q.order('id', { ascending: false });
+      if (table === 'expenses' || table === 'payouts') q = q.order('id', { ascending: false });
       if (table === 'sync_log') q = q.limit(15);
       let rows = chk(await q);
-      if (table === 'expenses' && opts.from) rows = rows.filter((e) => (e.date_to || e.date) >= opts.from);
+      if ((table === 'expenses' || table === 'payouts') && opts.from) rows = rows.filter((e) => (e.date_to || e.date) >= opts.from);
       return rows;
     },
     async insert(table, row) { return chk(await sb.from(table).insert(row).select().single()); },
@@ -812,8 +827,8 @@ S.group = autoGroup(S.from, S.to);
 
 // ---------------------------------------------------------------- завантаження
 async function loadRefs() {
-  const [settings, statuses, managers, rules, stores] = await Promise.all([api.settings(), api.list('statuses'), api.list('managers'), api.list('rules'), api.list('stores')]);
-  S.settings = settings; S.statuses = statuses; S.managers = managers; S.rules = rules; S.stores = stores;
+  const [settings, statuses, managers, rules, stores, people] = await Promise.all([api.settings(), api.list('statuses'), api.list('managers'), api.list('rules'), api.list('stores'), api.list('people').catch(() => [])]);
+  S.settings = settings; S.statuses = statuses; S.managers = managers; S.rules = rules; S.stores = stores; S.people = people || [];
   if (S.store != null && !activeStores().some((x) => x.id === S.store)) { S.store = null; store.set('store', null); }
 }
 const fin = () => (S.settings.finance_date === 'payment' ? 'payment' : 'order');
@@ -829,17 +844,25 @@ const scopeRules = (list, st) => (st == null ? list : list.filter((r) => (r.stor
 function dayMap(rows) { const m = {}; for (const r of rows) m[String(r.day).slice(0, 10)] = { revenue: N(r.revenue), sales: N(r.sales) }; return m; }
 
 // Денний звіт за період для магазину st (null = усі)
+const TEAM_CAT = 'Зарплата команди';
+// Правила для команди з фіксованою сумою на місяць (власники в прибуток не входять)
+const teamRules = () => (S.people || []).filter((p) => p.role === 'team' && p.pay_kind === 'fixed_monthly' && p.active !== false && N(p.value))
+  .map((p) => ({ id: 'p' + p.id, name: p.name, kind: 'fixed_monthly', value: N(p.value), category: TEAM_CAT, store_id: p.store_id ?? null, active: true }));
+const payoutsAsExpenses = (list) => list.filter((x) => { const p = (S.people || []).find((q) => q.id === N(x.person_id)); return !p || p.role !== 'owner'; })
+  .map((x) => ({ ...x, id: 'po' + x.id, category: TEAM_CAT, channel: null }));
 async function fetchDays(from, to, st = S.store) {
-  const rules = scopeRules(S.rules, st);
+  const rules = scopeRules([...S.rules, ...teamRules()], st);
   const needStores = st == null ? [...new Set(rules.filter((r) => r.active && r.store_id != null && r.kind !== 'fixed_monthly').map((r) => N(r.store_id)))] : [];
   const pr = { p_from: from, p_to: to, p_fin: fin(), p_store: st };
   const [daily, mgrDaily, expAll, ...sd] = await Promise.all([
-    api.rpc('stats_daily', pr), api.rpc('stats_manager_daily', pr), api.list('expenses', { from, to }),
+    api.rpc('stats_daily', pr), api.rpc('stats_manager_daily', pr),
+    Promise.all([api.list('expenses', { from, to }), api.list('payouts', { from, to }).catch(() => [])]).then(([e, p]) => [e, payoutsAsExpenses(p)]),
     ...needStores.map((id) => api.rpc('stats_daily', { ...pr, p_store: id })),
   ]);
-  const expenses = scopeExpenses(expAll, st);
+  const expenses = scopeExpenses(expAll[0], st);
+  const teamExp = scopeExpenses(expAll[1], st);
   const storeDays = Object.fromEntries(needStores.map((id, i) => [id, dayMap(sd[i])]));
-  return { days: buildDays(from, to, daily, expenses, rules, mgrDaily, S.managers, S.settings, storeDays), expenses };
+  return { days: buildDays(from, to, daily, [...expenses, ...teamExp], rules, mgrDaily, S.managers, S.settings, storeDays), expenses };
 }
 
 async function loadPeriod(force = false) {
@@ -867,7 +890,7 @@ async function loadPeriod(force = false) {
 function shell() {
   const nav = [
     ['Аналітика', [['overview', 'Огляд', 'home'], ['stores', 'Магазини', 'shop'], ['days', 'По днях', 'days'], ['months', 'По місяцях', 'months'], ['products', 'Товари', 'box'], ['ads', 'Реклама', 'ads'], ['managers', 'Менеджери', 'users']]],
-    ['Облік', [['expenses', 'Витрати', 'wallet']]],
+    ['Облік', [['expenses', 'Витрати', 'wallet'], ['salary', 'Зарплата', 'coin']]],
     ['Система', [['settings', 'Налаштування', 'gear']]],
   ];
   $('#app').innerHTML = `
@@ -938,6 +961,7 @@ const TITLES = {
   ads: ['Реклама', 'Витрати та окупність каналів'],
   managers: ['Менеджери', 'Продажі, конверсія і зарплата'],
   expenses: ['Витрати', 'Реклама, податки, SMS та інші витрати'],
+  salary: ['Зарплата', 'Виплати власникам і команді'],
   settings: ['Налаштування', 'Синхронізація, статуси, курси валют'],
 };
 function go(p) {
@@ -950,9 +974,9 @@ let renderSeq = 0;
 async function render() {
   const seq = ++renderSeq;
   const [t, s] = TITLES[S.page]; $('#pageT').textContent = t;
-  const usesStore = !['settings', 'stores'].includes(S.page) && activeStores().length > 1;
+  const usesStore = !['settings', 'stores', 'salary'].includes(S.page) && activeStores().length > 1;
   $('#pageS').textContent = s + (usesStore ? ' · ' + (S.store == null ? 'усі магазини' : storeLabel(S.store)) : '');
-  const usesPeriod = !['settings', 'months'].includes(S.page);
+  const usesPeriod = !['settings', 'months', 'salary'].includes(S.page);
   $('#tools').innerHTML = (usesStore ? storeTool() : '') + (usesPeriod ? periodTool() : '');
   $('#storeSeg')?.addEventListener('click', (e) => { const b = e.target.closest('[data-store]'); if (!b) return; S.store = b.dataset.store === '' ? null : N(b.dataset.store); store.set('store', S.store); S.data = null; render(); });
   $('#periodBtn')?.addEventListener('click', openPeriod);
@@ -1462,7 +1486,7 @@ function toggleChan() { const f = $('#expForm'); if (f) $('#chanF').hidden = f.c
 PAGES.expenses = async (seq) => {
   const D = await loadPeriod(); if (seq !== renderSeq) return;
   const T = D.T;
-  const cats = S.settings.expense_categories || ['Реклама', 'Інше'];
+  const cats = (S.settings.expense_categories || ['Реклама', 'Інше']).filter((c) => !/^зарплат/i.test(c));
   const byCat = { ...T.byCat };
   const totalExp = Object.values(byCat).reduce((a, b) => a + b, 0);
   const kindL = { percent_revenue: (v) => pct(N(v) / 100, 2) + ' від виручки', fixed_monthly: (v) => uah2(N(v)) + ' на місяць', per_order: (v) => uah2(N(v)) + ' за продаж' };
@@ -1529,6 +1553,133 @@ function ruleTotal(r, D) {
   }
   return v;
 }
+
+// ================================================================ ЗАРПЛАТА
+const PAY_KIND = { percent_profit: '% від чистого прибутку', fixed_monthly: 'Фіксовано на місяць', manual: 'Суми вносяться вручну' };
+const ROLE = { owner: 'Власник', team: 'Команда / UGC' };
+const monthRange = (m) => { const to = ymd(new Date(+m.slice(0, 4), +m.slice(5, 7), 0)); const today = ymd(new Date()); return [m + '-01', to > today ? today : to, to]; };
+function ownerAmount(p, net, payouts) {
+  const manual = payouts.filter((x) => N(x.person_id) === p.id).reduce((a, x) => a + N(x.amount_uah), 0);
+  const base = p.pay_kind === 'percent_profit' ? Math.max(0, net) * N(p.value) / 100 : p.pay_kind === 'fixed_monthly' ? N(p.value) : 0;
+  return base + manual;
+}
+function payRule(p) {
+  const st = p.role === 'team' && p.pay_kind === 'fixed_monthly' ? ` · ${p.store_id == null ? 'загальна' : esc(storeLabel(p.store_id))}` : '';
+  return p.pay_kind === 'percent_profit' ? `${nf2.format(N(p.value))}% від чистого прибутку` : p.pay_kind === 'fixed_monthly' ? `${uah2(N(p.value))} на місяць${st}` : 'разові виплати';
+}
+PAGES.salary = async (seq) => {
+  const nowM = ymd(new Date()).slice(0, 7);
+  const m = S.salMonth || nowM;
+  $('#tools').innerHTML = `<label class="f" style="flex-direction:row;align-items:center;gap:8px">Місяць<input type="month" id="salM" value="${m}" max="${nowM}" style="width:170px"></label>`;
+  $('#salM').addEventListener('change', (e) => { S.salMonth = e.target.value || nowM; render(); });
+  const [from, to, monthEnd] = monthRange(m);
+  const hFrom = (() => { const d = new Date(+m.slice(0, 4), +m.slice(5, 7) - 6, 1); return ymd(d); })();
+  const [cur, hist, payouts, histPay] = await Promise.all([
+    fetchDays(from, to, null), fetchDays(hFrom, to, null), api.list('payouts', { from, to: monthEnd }), api.list('payouts', { from: hFrom, to }),
+  ]);
+  if (seq !== renderSeq) return;
+  const people = S.people || [];
+  const owners = people.filter((p) => p.role === 'owner' && p.active !== false);
+  const team = people.filter((p) => p.role === 'team');
+  const T = totals(Object.values(cur.days));
+  const net = T.net;
+  const ownersRows = owners.map((p) => ({ p, amount: ownerAmount(p, net, payouts) }));
+  const ownersTotal = ownersRows.reduce((a, r) => a + r.amount, 0);
+  const teamTotal = T.byCat[TEAM_CAT] || 0;
+  const mgrTotal = T.byCat['Зарплата менеджерів'] || 0;
+  const left = net - ownersTotal;
+  const partial = to < monthEnd;
+  const pname = (id) => people.find((p) => p.id === N(id))?.name || '—';
+  const hs = series(hist.days, 'month');
+  $('#page').innerHTML = `
+  <div class="kpis">
+    <div class="kpi hero"><div class="kpi-l"><span>Залишається в бізнесі</span></div><div class="kpi-v ${left < 0 ? 'neg' : ''}">${uah(left)}</div><div class="kpi-s">Чистий прибуток ${uah(net)} − виплати власникам ${uah(ownersTotal)}${partial ? ' · місяць ще триває' : ''}</div></div>
+    ${kpi('Чистий прибуток бізнесу', `<span class="${net < 0 ? 'neg' : ''}">${uah(net)}</span>`, `${MONTHS[+m.slice(5, 7) - 1]} · усі магазини`)}
+    ${kpi('Власникам', uah(ownersTotal), owners.map((p) => esc(p.name)).join(' · ') || 'додайте власників нижче')}
+    ${kpi('Команда й UGC', uah(teamTotal), 'вже віднято від прибутку')}
+    ${kpi('Менеджери', uah(mgrTotal), 'за продажі, вже віднято')}
+  </div>
+  <div class="grid">
+    <section class="card c5"><div class="card-h"><div><h2 class="card-t">Власники</h2><div class="card-s">Розподіл прибутку. Від чистого прибутку не віднімається.</div></div></div>
+      ${ownersRows.length ? `<div class="stat-list">${ownersRows.map((r) => `<div class="stat-row" style="align-items:center"><span><b>${esc(r.p.name)}</b><br><span class="muted small">${payRule(r.p)}</span></span><b style="font-size:17px">${uah(r.amount)}</b></div>`).join('')}
+        <div class="stat-row" style="font-weight:700;border-top:1px solid var(--line)"><span>Разом власникам</span><b>${uah(ownersTotal)}</b></div></div>` : '<div class="empty">Додайте себе й партнера в блоці «Люди» з роллю «Власник»</div>'}
+      ${net < 0 ? '<div class="hint warn" style="margin-top:10px">Місяць у мінусі, тому відсоток від прибутку дорівнює 0.</div>' : ''}
+      ${partial ? '<div class="muted small" style="margin-top:10px">Відсоток рахується від прибутку на сьогодні й зміниться до кінця місяця.</div>' : ''}</section>
+    <section class="card c7"><div class="card-h"><div><h2 class="card-t">Внести виплату</h2><div class="card-s">UGC-креатору за відео чи контент, фрилансеру або бонус власнику. Суму команди буде віднято від прибутку обраного магазину.</div></div></div>
+      <form class="form" id="payForm">
+        <label class="f">Дата<input type="date" name="date" required value="${to}"></label>
+        <label class="f">Кому<select name="person_id" required>${people.filter((p) => p.active !== false).sort((x, y) => (x.role === 'team' ? 0 : 1) - (y.role === 'team' ? 0 : 1)).map((p) => `<option value="${p.id}">${esc(p.name)} (${ROLE[p.role].toLowerCase()})</option>`).join('') || '<option value="">спершу додайте людину</option>'}</select></label>
+        ${storeSelect('store_id', null) || ''}
+        <label class="f">Сума<input type="text" name="amount" inputmode="decimal" required placeholder="0"></label>
+        <label class="f">Валюта<select name="currency"><option>UAH</option><option>USD</option><option>EUR</option></select></label>
+        <label class="f">Розподілити до (необов.)<input type="date" name="date_to"></label>
+        <label class="f wide">Коментар<input type="text" name="comment" placeholder="Напр. 3 відео Lamborghini"></label>
+        <div style="display:flex;gap:8px"><button class="btn primary" id="paySubmit">${icon('plus')}Додати</button><button type="button" class="btn" id="payCancel" hidden>Скасувати</button></div>
+      </form></section>
+    <section class="card c12"><div class="card-h"><div><h2 class="card-t">Виплати за ${MONTHS[+m.slice(5, 7) - 1].toLowerCase()}</h2><div class="card-s">Разові суми, внесені вручну</div></div></div>
+      <div class="tw">${payouts.length ? `<table class="t"><thead><tr><th>Дата</th><th>Кому</th><th>Роль</th><th>Магазин</th><th class="n">Сума</th><th class="n">У гривнях</th><th>Коментар</th><th>Вніс</th><th></th></tr></thead><tbody>${payouts.map((x) => { const p = people.find((q) => q.id === N(x.person_id)); return `<tr>
+        <td style="white-space:nowrap">${fdate(x.date)}${x.date_to ? ' – ' + fdate(x.date_to) : ''}</td><td><b>${esc(pname(x.person_id))}</b></td><td class="muted small">${p ? ROLE[p.role] : ''}</td>
+        <td>${x.store_id == null ? '<span class="muted">Загальна</span>' : esc(storeLabel(x.store_id))}</td>
+        <td class="n">${nf2.format(N(x.amount))} ${x.currency === 'UAH' ? '₴' : esc(x.currency)}</td><td class="n">${uah(N(x.amount_uah))}</td><td class="muted small">${esc(x.comment || '')}</td><td class="muted small">${esc((x.created_by || '').split('@')[0])}</td>
+        <td class="n" style="white-space:nowrap"><button class="icon-btn" data-pedit="${x.id}" title="Редагувати">${icon('edit')}</button><button class="icon-btn" data-pdel="${x.id}" title="Видалити">${icon('trash')}</button></td></tr>`; }).join('')}</tbody></table>` : '<div class="empty">Цього місяця виплат ще не вносили</div>'}</div></section>
+    <section class="card c7"><div class="card-h"><div><h2 class="card-t">Люди</h2><div class="card-s">Власники й команда. Для власника задайте відсоток від прибутку або фіксовану суму.</div></div></div>
+      <div class="tw"><table class="t"><thead><tr><th>Ім’я</th><th>Роль</th><th>Як платимо</th><th></th></tr></thead><tbody>${people.map((p) => `<tr class="${p.active === false ? 'muted' : ''}"><td><b>${esc(p.name)}</b>${p.active === false ? ' <span class="small">(неактивний)</span>' : ''}</td><td>${ROLE[p.role]}</td><td class="small">${payRule(p)}</td>
+        <td class="n" style="white-space:nowrap"><button class="icon-btn" data-hedit="${p.id}" title="Редагувати">${icon('edit')}</button><button class="icon-btn" data-hdel="${p.id}" title="Видалити">${icon('trash')}</button></td></tr>`).join('') || '<tr><td colspan="4" class="empty">Ще нікого немає</td></tr>'}</tbody></table></div>
+      <form class="form" id="personForm" style="margin-top:14px">
+        <label class="f">Ім’я<input type="text" name="name" required placeholder="Віктор"></label>
+        <label class="f">Роль<select name="role"><option value="owner">Власник</option><option value="team" selected>Команда / UGC</option></select></label>
+        <label class="f">Як платимо<select name="pay_kind"><option value="manual">Разові суми вручну</option><option value="percent_profit">% від чистого прибутку</option><option value="fixed_monthly">Фіксовано на місяць</option></select></label>
+        <label class="f">Значення<input type="text" name="value" inputmode="decimal" placeholder="30 (%) або 20000 (₴)"></label>
+        ${storeSelect('store_id', null) || ''}
+        <label class="f" style="flex-direction:row;align-items:center;gap:8px;padding-bottom:8px"><input type="checkbox" name="active" checked style="width:auto;min-height:0">активний</label>
+        <div style="display:flex;gap:8px"><button class="btn primary" id="personSubmit">${icon('plus')}Додати людину</button><button type="button" class="btn" id="personCancel" hidden>Скасувати</button></div>
+      </form>
+      <div class="muted small" style="margin-top:8px">«Магазин» для команди з фіксованою сумою означає, з якого магазину віднімати її щомісяця.</div></section>
+    <section class="card c5"><div class="card-h"><div><h2 class="card-t">Історія по місяцях</h2><div class="card-s">Прибуток, виплати власникам і що лишилось</div></div></div>
+      <div class="tw"><table class="t"><thead><tr><th>Місяць</th><th class="n">Чистий прибуток</th><th class="n">Власникам</th><th class="n">Залишок</th></tr></thead><tbody>${hs.slice().reverse().map((h) => {
+        const [mf, mt] = monthRange(h.key); const mp = histPay.filter((x) => x.date >= mf && x.date <= mt);
+        const own = owners.reduce((a, p) => a + ownerAmount(p, h.net, mp), 0);
+        return `<tr><td><b>${MONTHS[+h.key.slice(5, 7) - 1]}</b> <span class="muted small">${h.key.slice(0, 4)}</span></td><td class="n ${h.net < 0 ? 'neg' : ''}">${uah(h.net)}</td><td class="n">${uah(own)}</td><td class="n"><b class="${h.net - own < 0 ? 'neg' : ''}">${uah(h.net - own)}</b></td></tr>`; }).join('')}</tbody></table></div>
+      <div class="muted small" style="margin-top:8px">Для минулих місяців відсоток рахується за поточними налаштуваннями людей.</div></section>
+  </div>`;
+  // --- виплати
+  const pf = $('#payForm');
+  pf.addEventListener('submit', async (e) => {
+    e.preventDefault(); const v = Object.fromEntries(new FormData(pf));
+    const amount = parseFloat(String(v.amount || '').replace(/\s/g, '').replace(',', '.'));
+    if (!v.person_id || !v.date || !Number.isFinite(amount)) return toast('Вкажіть кому, дату і суму', true);
+    const row = { person_id: N(v.person_id), date: v.date, date_to: v.date_to && v.date_to > v.date ? v.date_to : null, store_id: v.store_id ? N(v.store_id) : null,
+      amount, currency: v.currency || 'UAH', rate: rateFor(v.currency || 'UAH'), comment: v.comment || null };
+    try { if (pf.dataset.id) await api.update('payouts', N(pf.dataset.id), row); else await api.insert('payouts', row); S.data = null; toast('Виплату збережено'); render(); } catch (err) { toast(err.message, true); }
+  });
+  $('#payCancel').addEventListener('click', () => render());
+  $$('[data-pdel]').forEach((b) => b.addEventListener('click', async () => { if (!(await confirmBox('Видалити виплату?', 'Сума зникне зі звітів.'))) return; await api.remove('payouts', N(b.dataset.pdel)); S.data = null; render(); }));
+  $$('[data-pedit]').forEach((b) => b.addEventListener('click', () => {
+    const x = payouts.find((q) => q.id === N(b.dataset.pedit)); if (!x) return;
+    for (const k of ['date', 'date_to', 'person_id', 'store_id', 'amount', 'currency', 'comment']) if (pf[k]) pf[k].value = x[k] ?? '';
+    pf.dataset.id = x.id; $('#paySubmit').textContent = 'Зберегти зміни'; $('#payCancel').hidden = false; pf.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }));
+  // --- люди
+  const hf = $('#personForm');
+  hf.addEventListener('submit', async (e) => {
+    e.preventDefault(); const v = Object.fromEntries(new FormData(hf));
+    const value = parseFloat(String(v.value || '0').replace(/\s/g, '').replace(',', '.')) || 0;
+    if (!v.name) return toast('Вкажіть ім’я', true);
+    if (v.pay_kind !== 'manual' && !value) return toast('Вкажіть відсоток або суму', true);
+    const row = { name: v.name.trim(), role: v.role, pay_kind: v.pay_kind, value, store_id: v.store_id ? N(v.store_id) : null, active: !!hf.active.checked };
+    try { if (hf.dataset.id) await api.update('people', N(hf.dataset.id), row); else await api.insert('people', { ...row, sort: people.length }); S.people = await api.list('people'); S.data = null; toast('Збережено'); render(); } catch (err) { toast(err.message, true); }
+  });
+  $('#personCancel').addEventListener('click', () => render());
+  $$('[data-hdel]').forEach((b) => b.addEventListener('click', async () => {
+    if (!(await confirmBox('Видалити людину?', 'Її разові виплати залишаться у звітах без імені. Щоб просто припинити нарахування, краще зніміть галочку «активний».'))) return;
+    await api.remove('people', N(b.dataset.hdel)); S.people = await api.list('people'); S.data = null; render();
+  }));
+  $$('[data-hedit]').forEach((b) => b.addEventListener('click', () => {
+    const p = people.find((q) => q.id === N(b.dataset.hedit)); if (!p) return;
+    for (const k of ['name', 'role', 'pay_kind', 'value', 'store_id']) if (hf[k]) hf[k].value = p[k] ?? '';
+    hf.active.checked = p.active !== false; hf.dataset.id = p.id; $('#personSubmit').textContent = 'Зберегти'; $('#personCancel').hidden = false; hf.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }));
+};
 
 // ================================================================ НАЛАШТУВАННЯ
 PAGES.settings = async (seq) => {

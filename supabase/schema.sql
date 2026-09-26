@@ -114,6 +114,40 @@ create table if not exists rules (
 alter table rules add column if not exists store_id int;
 alter table rules add column if not exists created_by text default (auth.jwt() ->> 'email');
 
+-- ---------- Зарплата: люди і виплати ----------
+-- role: owner (власник — виплати НЕ віднімаються від прибутку, це розподіл прибутку)
+--       team  (UGC-креатор, фрилансер тощо — виплати віднімаються від прибутку магазину)
+-- pay_kind: percent_profit (% від чистого прибутку всього бізнесу за місяць) | fixed_monthly | manual
+create table if not exists people (
+  id        bigserial primary key,
+  name      text not null,
+  role      text not null default 'team' check (role in ('owner','team')),
+  pay_kind  text not null default 'manual' check (pay_kind in ('percent_profit','fixed_monthly','manual')),
+  value     numeric(14,4) not null default 0,
+  store_id  int,                              -- для команди: з якого магазину віднімати фіксовану суму
+  active    boolean not null default true,
+  sort      int not null default 0,
+  created_by text default (auth.jwt() ->> 'email'),
+  created_at timestamptz not null default now()
+);
+
+-- Разові виплати (UGC за відео, контент, бонуси)
+create table if not exists payouts (
+  id         bigserial primary key,
+  person_id  bigint references people(id) on delete set null,
+  date       date not null,
+  date_to    date,                          -- якщо вказано, сума розподіляється по днях
+  store_id   int,                           -- магазин; порожньо = загальна
+  amount     numeric(14,2) not null,
+  currency   text not null default 'UAH' check (currency in ('UAH','USD','EUR')),
+  rate       numeric(10,4) not null default 1,
+  amount_uah numeric(14,2) generated always as (round(amount * rate, 2)) stored,
+  comment    text,
+  created_by text default (auth.jwt() ->> 'email'),
+  created_at timestamptz not null default now()
+);
+create index if not exists payouts_date_idx on payouts (date);
+
 -- ---------- Налаштування і службові дані ----------
 create table if not exists settings (
   key   text primary key,
@@ -135,7 +169,7 @@ insert into settings(key, value) values
   ('finance_date',       '"order"'),
   ('usd_rate',           '41.5'),
   ('eur_rate',           '45'),
-  ('expense_categories', '["Реклама","Податки","SMS-розсилки","Зарплата","Оренда / склад","Пакування","Сервіси (CRM, сайт)","Банк / еквайринг","Інше"]'),
+  ('expense_categories', '["Реклама","Податки","SMS-розсилки","Оренда / склад","Пакування","Сервіси (CRM, сайт)","Банк / еквайринг","Інше"]'),
   ('ad_channels',        '["Meta","Google","TikTok","Блогери","Розсилки","Інше"]'),
   ('targets',            '{"romi": 1.0, "cpo": 300, "conversion": 0.6}'),
   ('backfill_done',      'false'),
@@ -150,7 +184,7 @@ on conflict (key) do nothing;
 do $$
 declare t text;
 begin
-  foreach t in array array['orders','order_items','statuses','stores','managers','expenses','rules','settings','sync_log'] loop
+  foreach t in array array['orders','order_items','statuses','stores','managers','expenses','rules','settings','sync_log','people','payouts'] loop
     execute format('alter table %I enable row level security', t);
     execute format('drop policy if exists "signed_in_all" on %I', t);
     execute format('create policy "signed_in_all" on %I for all to authenticated using (true) with check (true)', t);
@@ -165,7 +199,7 @@ do $$
 declare t text;
 begin
   if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
-    foreach t in array array['expenses','rules','stores','statuses','managers','settings','sync_log'] loop
+    foreach t in array array['expenses','rules','stores','statuses','managers','settings','sync_log','people','payouts'] loop
       if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
         execute format('alter publication supabase_realtime add table public.%I', t);
       end if;
