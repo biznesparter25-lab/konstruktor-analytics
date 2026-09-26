@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
     // ---------- транзакції WayForPay (частинами по 7 днів) ----------
     const rows: any[] = []
     for (let a = fromMs; a < now; a += 7 * DAY) {
-      const dateBegin = Math.floor(a / 1000), dateEnd = Math.floor(Math.min(a + 7 * DAY, now) / 1000)
+      const dateBegin = Math.floor(a / 1000), dateEnd = Math.floor(Math.min(a + 7 * DAY, now) / 1000) - 1
       const res = await fetch(WFP_URL, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ transactionType: "TRANSACTION_LIST", merchantAccount: ACCOUNT, apiVersion: 1,
@@ -89,6 +89,9 @@ Deno.serve(async (req) => {
         })
       }
     }
+
+    // одна транзакція може прийти двічі (на межі двох 7-денних частин) — лишаємо один запис
+    { const uniq = new Map<string, any>(); for (const r of rows) uniq.set(r.id, r); rows.length = 0; rows.push(...uniq.values()) }
 
     // ---------- прив'язка до заявок ----------
     // 1) за номером Tilda: друга частина orderReference = зовнішній номер заявки SalesDrive
