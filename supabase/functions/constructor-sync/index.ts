@@ -209,6 +209,7 @@ Deno.serve(async (req) => {
         sajt: Number(o.sajt) || null,
         manager_id: Number(o.userId) || null,
         payment_method: pmRaw ? (payMethods[pmRaw] || pmRaw) : null,
+        external_id: o.externalId ? String(o.externalId) : null,
         ttn: dl?.trackingNumber ? String(dl.trackingNumber) : null,
         delivery_cost: deliveryCost(dl),
         delivery_json: dl,

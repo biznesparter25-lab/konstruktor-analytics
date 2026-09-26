@@ -28,6 +28,8 @@ create table if not exists orders (
   payment_method   text,
   synced_at        timestamptz not null default now()
 );
+alter table orders add column if not exists external_id text;             -- зовнішній номер заявки (номер замовлення Tilda)
+create index if not exists orders_external_id_idx on orders (external_id);
 alter table orders add column if not exists ttn text;                     -- номер ТТН
 alter table orders add column if not exists delivery_cost numeric(14,2) not null default 0;  -- вартість доставки з трекінгу
 alter table orders add column if not exists delivery_json jsonb;           -- дані доставки як є (для перевірки)
@@ -156,6 +158,24 @@ create table if not exists payouts (
 );
 create index if not exists payouts_date_idx on payouts (date);
 
+-- ---------- WayForPay: транзакції з фактичною комісією ----------
+create table if not exists wfp_transactions (
+  id              text primary key,             -- orderReference|тип|час обробки
+  order_reference text not null,                -- номер замовлення у WayForPay (напр. 13894761_1239035453)
+  tx_type         text,                         -- PURCHASE, REFUND, ...
+  status          text,                         -- Approved, Declined, ...
+  tx_time         timestamptz,                  -- коли створено
+  amount          numeric(14,2) not null default 0,
+  currency        text,
+  fee             numeric(14,2) not null default 0,   -- фактична комісія WayForPay
+  payment_system  text,                         -- card, applePay, googlePay, privat24, ...
+  order_id        bigint,                       -- прив'язана заявка SalesDrive
+  matched_by      text,                         -- external_id | payment | null
+  synced_at       timestamptz not null default now()
+);
+create index if not exists wfp_tx_time_idx on wfp_transactions (tx_time);
+create index if not exists wfp_order_idx on wfp_transactions (order_id);
+
 -- ---------- Налаштування і службові дані ----------
 create table if not exists settings (
   key   text primary key,
@@ -192,7 +212,7 @@ on conflict (key) do nothing;
 do $$
 declare t text;
 begin
-  foreach t in array array['orders','order_items','statuses','stores','managers','expenses','rules','settings','sync_log','people','payouts'] loop
+  foreach t in array array['orders','order_items','statuses','stores','managers','expenses','rules','settings','sync_log','people','payouts','wfp_transactions'] loop
     execute format('alter table %I enable row level security', t);
     execute format('drop policy if exists "signed_in_all" on %I', t);
     execute format('create policy "signed_in_all" on %I for all to authenticated using (true) with check (true)', t);
@@ -207,7 +227,7 @@ do $$
 declare t text;
 begin
   if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
-    foreach t in array array['expenses','rules','stores','statuses','managers','settings','sync_log','people','payouts'] loop
+    foreach t in array array['expenses','rules','stores','statuses','managers','settings','sync_log','people','payouts','wfp_transactions'] loop
       if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
         execute format('alter publication supabase_realtime add table public.%I', t);
       end if;
@@ -454,6 +474,31 @@ create or replace function payment_methods()
 returns table (method text, cnt int)
 language sql stable as $$
   select coalesce(nullif(payment_method,''),'—'), count(*)::int from orders group by 1 order by 2 desc
+$$;
+
+-- Комісія WayForPay по днях: день і магазин беремо із прив'язаної заявки,
+-- неприв'язані транзакції — за датою платежу і лише в режимі «усі магазини»
+create or replace function stats_fee_daily(p_from date, p_to date, p_store int default null)
+returns table (day date, fee numeric, cnt int)
+language sql stable as $$
+  select coalesce(o.order_date, (w.tx_time at time zone 'Europe/Kyiv')::date) d, sum(w.fee), count(*)::int
+  from wfp_transactions w left join orders o on o.id = w.order_id
+  where w.status = 'Approved' and w.fee <> 0
+    and coalesce(o.order_date, (w.tx_time at time zone 'Europe/Kyiv')::date) between p_from and p_to
+    and (case when o.id is null then p_store is null else in_scope(o.sajt, p_store) end)
+  group by 1
+$$;
+
+-- Транзакції WayForPay за період (для таблиці у «Витратах»)
+create or replace function wfp_list(p_from date, p_to date)
+returns table (id text, order_reference text, tx_type text, status text, tx_time timestamptz, amount numeric, fee numeric,
+               payment_system text, order_id bigint, matched_by text, sajt int, order_date date)
+language sql stable as $$
+  select w.id, w.order_reference, w.tx_type, w.status, w.tx_time, w.amount, w.fee, w.payment_system, w.order_id, w.matched_by, o.sajt, o.order_date
+  from wfp_transactions w left join orders o on o.id = w.order_id
+  where (w.tx_time at time zone 'Europe/Kyiv')::date between p_from and p_to
+  order by w.tx_time desc
+  limit 1000
 $$;
 
 -- Приклади даних доставки для перевірки (останні відмови з ТТН)

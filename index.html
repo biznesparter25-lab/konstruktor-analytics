@@ -534,6 +534,15 @@ function createDemoApi() {
       return group(list, (o) => o.order_date + '|' + o.payment_method, (k) => ({ day: k.split('|')[0], method: k.split('|')[1], cnt: 0, amount: 0 }), (x, o) => { x.cnt++; x.amount += o.payed_amount; });
     },
     payment_methods() { return group(orders, (o) => o.payment_method || '—', (k) => ({ method: k, cnt: 0 }), (x) => { x.cnt++; }).sort((a, b) => b.cnt - a.cnt); },
+    stats_fee_daily({ p_from, p_to, p_store }) {
+      const list = scoped(p_store).filter((o) => o.payment_method === 'Оплата на картку' && o.payed_amount > 0 && inR(o.order_date, p_from, p_to));
+      return group(list, (o) => o.order_date, (k) => ({ day: k, fee: 0, cnt: 0 }), (x, o) => { x.cnt++; x.fee += Math.round(o.payed_amount * 2) / 100; });
+    },
+    wfp_list({ p_from, p_to }) {
+      return orders.filter((o) => o.payment_method === 'Оплата на картку' && o.payed_amount > 0 && inR(o.order_date, p_from, p_to)).slice(-300).reverse().map((o, i) => ({
+        id: 'w' + o.id, order_reference: '13894761_' + (1239000000 + o.id), tx_type: 'PURCHASE', status: 'Approved', tx_time: o.order_time.replace(' ', 'T') + '+03:00',
+        amount: o.payed_amount, fee: Math.round(o.payed_amount * 2) / 100, payment_system: ['applePay', 'card', 'googlePay'][i % 3], order_id: i % 25 === 7 ? null : o.id, matched_by: 'external_id', sajt: o.sajt, order_date: o.order_date }));
+    },
     delivery_sample() {
       return orders.filter((o) => ['fail', 'return'].includes(cat(o)) && o.ttn).slice(-5).reverse().map((o) => ({ id: o.id, order_date: o.order_date, status: statuses.find((x) => x.id === o.status_id)?.name, ttn: o.ttn, sajt: o.sajt, delivery_cost: o.delivery_cost, delivery_json: { trackingNumber: o.ttn, provider: 'novaposhta', cost: o.delivery_cost, statusCode: 102 } }));
     },
@@ -709,8 +718,8 @@ function createLiveApi() {
         .on('postgres_changes', { event: '*', schema: 'public' }, (p) => cb(p.table, p))
         .subscribe((status) => { S.live = status === 'SUBSCRIBED'; updateSyncPill(); });
     },
-    async sync(body = {}) {
-      const { data, error } = await sb.functions.invoke(CONFIG.SYNC_FUNCTION, { body });
+    async sync(body = {}, fn = CONFIG.SYNC_FUNCTION) {
+      const { data, error } = await sb.functions.invoke(fn, { body });
       if (error) { let msg = error.message; try { const j = await error.context.json(); msg = j.error || msg; } catch { /* ok */ } throw new Error(msg); }
       return data;
     },
@@ -861,6 +870,7 @@ function dayMap(rows) { const m = {}; for (const r of rows) m[String(r.day).slic
 
 // Денний звіт за період для магазину st (null = усі)
 const TEAM_CAT = 'Зарплата команди';
+const WFP_CAT = 'Комісія WayForPay';
 // Правила для команди з фіксованою сумою на місяць (власники в прибуток не входять)
 const teamRules = () => (S.people || []).filter((p) => p.role === 'team' && p.pay_kind === 'fixed_monthly' && p.active !== false && N(p.value))
   .map((p) => ({ id: 'p' + p.id, name: p.name, kind: 'fixed_monthly', value: N(p.value), category: TEAM_CAT, store_id: p.store_id ?? null, active: true }));
@@ -871,14 +881,17 @@ async function fetchDays(from, to, st = S.store) {
   const needStores = st == null ? [...new Set(rules.filter((r) => r.active && r.store_id != null && r.kind !== 'fixed_monthly').map((r) => N(r.store_id)))] : [];
   const pr = { p_from: from, p_to: to, p_fin: fin(), p_store: st };
   const hasPay = rules.some((r) => r.active && r.kind === 'percent_payment');
-  const [daily, mgrDaily, payRows, expAll, ...sd] = await Promise.all([
+  const [daily, mgrDaily, payRows, feeRows, expAll, ...sd] = await Promise.all([
     api.rpc('stats_daily', pr), api.rpc('stats_manager_daily', pr),
     hasPay ? api.rpc('stats_payment_daily', { p_from: from, p_to: to, p_store: st }).catch(() => []) : Promise.resolve([]),
+    api.rpc('stats_fee_daily', { p_from: from, p_to: to, p_store: st }).catch(() => []),
     Promise.all([api.list('expenses', { from, to }), api.list('payouts', { from, to }).catch(() => [])]).then(([e, p]) => [e, payoutsAsExpenses(p)]),
     ...needStores.map((id) => Promise.all([api.rpc('stats_daily', { ...pr, p_store: id }), hasPay ? api.rpc('stats_payment_daily', { p_from: from, p_to: to, p_store: id }).catch(() => []) : []])),
   ]);
   const expenses = scopeExpenses(expAll[0], st);
   const teamExp = scopeExpenses(expAll[1], st);
+  // Фактична комісія WayForPay (вже відфільтрована за магазином у базі)
+  for (const f of feeRows || []) if (N(f.fee)) teamExp.push({ id: 'wfp' + f.day, date: String(f.day).slice(0, 10), date_to: null, amount_uah: N(f.fee), category: WFP_CAT });
   const storeDays = Object.fromEntries(needStores.map((id, i) => [id, { days: dayMap(sd[i][0]), pay: payMapOf(sd[i][1]) }]));
   return { days: buildDays(from, to, daily, [...expenses, ...teamExp], rules, mgrDaily, S.managers, S.settings, storeDays, payMapOf(payRows)), expenses };
 }
@@ -1529,6 +1542,7 @@ PAGES.expenses = async (seq) => {
       ${hbars(Object.entries(byCat).sort((a, b) => b[1] - a[1]).map(([c, v]) => ({ name: c, a: v, val: uah(v), tip: `${c}: ${uah2(Math.round(v * 100) / 100)}` })))}
       <div class="hb" style="border-top:1px solid var(--line);margin-top:6px;padding-top:10px;font-weight:700"><div>Разом</div><div></div><div class="val">${uah(totalExp)}</div></div>
       <div class="muted small" style="margin-top:6px">Це ${pct(div(totalExp, T.revenue), 0)} від виручки</div></section>
+    <section class="card c12" id="wfpCard"><div class="card-h"><div><h2 class="card-t">WayForPay</h2><div class="card-s">Фактична комісія з кожного платежу за період. Підтягується автоматично і віднімається в день і в магазині замовлення.</div></div><button class="btn sm" id="wfpSync">${icon('sync')}Оновити WayForPay</button></div><div id="wfpBody"><div class="empty">Завантаження…</div></div></section>
     <section class="card c12"><div class="card-h"><div><h2 class="card-t">Автоматичні витрати</h2><div class="card-s">Рахуються самі кожного дня: податок від виручки, фіксовані платежі на місяць, витрати на кожен продаж, комісії платіжних систем (WayForPay, накладений платіж)</div></div></div>
       <div class="tw"><table class="t"><thead><tr><th>Назва</th><th>Розмір</th><th>Магазин</th><th>Категорія</th><th>Діє</th><th class="n">За період</th><th>Статус</th><th></th></tr></thead><tbody>${S.rules.map((r) => `<tr>
         <td><b>${esc(r.name)}</b></td><td>${kindL[r.kind](r.value, r)}</td><td>${r.store_id == null ? '<span class="muted">Усі</span>' : esc(storeLabel(r.store_id))}</td><td>${esc(r.category)}</td><td class="muted small">${r.date_from ? 'з ' + fdate(r.date_from) : 'завжди'}${r.date_to ? ' по ' + fdate(r.date_to) : ''}</td>
@@ -1548,6 +1562,12 @@ PAGES.expenses = async (seq) => {
         <div style="display:flex;gap:8px"><button class="btn primary" id="ruleSubmit">${icon('plus')}Додати правило</button><button type="button" class="btn" id="ruleCancel" hidden>Скасувати</button></div>
       </form></section>
   </div>`;
+  renderWfp(seq);
+  $('#wfpSync').addEventListener('click', async () => {
+    const b = $('#wfpSync'); b.disabled = true;
+    try { const r = await api.sync({}, 'wayforpay-sync'); toast(r.success === false ? 'Помилка: ' + r.error : r.message || 'Готово', r.success === false); S.data = null; render(); }
+    catch (e) { toast('WayForPay: ' + e.message, true); } finally { b.disabled = false; }
+  });
   const f = $('#expForm');
   f.category.value = S.lastCat || 'Реклама'; toggleChan();
   f.category.addEventListener('change', toggleChan);
@@ -1569,6 +1589,33 @@ PAGES.expenses = async (seq) => {
   $$('[data-rdel]').forEach((b) => b.addEventListener('click', async () => { if (!(await confirmBox('Видалити правило?', 'Ця витрата більше не рахуватиметься у звітах.'))) return; await api.remove('rules', N(b.dataset.rdel)); S.rules = await api.list('rules'); S.data = null; render(); }));
   $$('[data-redit]').forEach((b) => b.addEventListener('click', () => { const r = S.rules.find((x) => x.id === N(b.dataset.redit)); for (const k of ['name', 'kind', 'value', 'category', 'date_from', 'date_to', 'store_id', 'method', 'value2']) if (rf[k]) rf[k].value = r[k] ?? ''; togglePm(); rf.dataset.id = r.id; $('#ruleSubmit').textContent = 'Зберегти правило'; $('#ruleCancel').hidden = false; rf.scrollIntoView({ behavior: 'smooth', block: 'center' }); }));
 };
+const PAYSYS = { applepay: 'Apple Pay', googlepay: 'Google Pay', card: 'Картка', privat24: 'Приват24', visacheckout: 'Visa Checkout', masterpass: 'Masterpass', btc: 'BTC' };
+async function renderWfp(seq) {
+  let list = [];
+  try { list = await api.rpc('wfp_list', { p_from: S.from, p_to: S.to }); } catch { list = null; }
+  if (seq !== renderSeq || !$('#wfpBody')) return;
+  if (list === null) { $('#wfpBody').innerHTML = '<div class="empty">Ще не налаштовано. Див. інструкцію: функція wayforpay-sync і ключі WayForPay у секретах Supabase.</div>'; return; }
+  const ok = list.filter((x) => x.status === 'Approved');
+  if (!list.length) { $('#wfpBody').innerHTML = '<div class="empty">За цей період транзакцій немає. Натисніть «Оновити WayForPay».</div>'; return; }
+  const fee = ok.reduce((a, x) => a + N(x.fee), 0), amt = ok.filter((x) => (x.tx_type || '').toUpperCase() !== 'REFUND').reduce((a, x) => a + N(x.amount), 0);
+  const un = ok.filter((x) => !x.order_id);
+  const by = {}; for (const x of ok) { const k = PAYSYS[(x.payment_system || '').toLowerCase()] || x.payment_system || '—'; by[k] = by[k] || { cnt: 0, amount: 0, fee: 0 }; by[k].cnt++; by[k].amount += N(x.amount); by[k].fee += N(x.fee); }
+  $('#wfpBody').innerHTML = `
+    <div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:12px">
+      ${kpi('Комісія за період', uah(fee), `${int(ok.length)} успішних платежів`)}
+      ${kpi('Оплачено через WayForPay', uah(amt), 'сума успішних оплат')}
+      ${kpi('Середня комісія', pct(div(fee, amt), 2), 'комісія / сума')}
+      ${kpi('Не прив’язано', int(un.length), un.length ? 'віднімаються як загальні' : 'усі платежі знайдено в CRM')}
+    </div>
+    <div class="grid">
+      <div class="c5"><table class="t"><thead><tr><th>Спосіб оплати</th><th class="n">Платежів</th><th class="n">Сума</th><th class="n">Комісія</th><th class="n">%</th></tr></thead><tbody>${Object.entries(by).sort((a, b) => b[1].fee - a[1].fee).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="n">${int(v.cnt)}</td><td class="n">${uah(v.amount)}</td><td class="n">${uah2(Math.round(v.fee * 100) / 100)}</td><td class="n">${pct(div(v.fee, v.amount), 2)}</td></tr>`).join('')}</tbody></table></div>
+      <div class="c7"><div class="tw tbl-scroll" style="max-height:320px"><table class="t"><thead><tr><th>Дата</th><th>Номер WayForPay</th><th>Заявка</th><th>Спосіб</th><th class="n">Сума</th><th class="n">Комісія</th><th>Статус</th></tr></thead><tbody>${list.slice(0, 200).map((x) => `<tr>
+        <td style="white-space:nowrap">${fdt(x.tx_time)}</td><td class="small">${esc(x.order_reference)}${(x.tx_type || '').toUpperCase() === 'REFUND' ? ' <span class="pill fail">повернення</span>' : ''}</td>
+        <td>${x.order_id ? `#${x.order_id} <span class="muted small">${x.sajt == null ? '' : esc(storeLabel(x.sajt))}</span>` : '<span class="flag warn">не знайдено</span>'}</td>
+        <td class="small">${esc(PAYSYS[(x.payment_system || '').toLowerCase()] || x.payment_system || '')}</td><td class="n">${uah2(N(x.amount))}</td><td class="n">${uah2(N(x.fee))}</td>
+        <td>${x.status === 'Approved' ? '<span class="pill success">успішно</span>' : `<span class="pill work">${esc(x.status || '')}</span>`}</td></tr>`).join('')}</tbody></table></div></div>
+    </div>`;
+}
 function ruleTotal(r, D) {
   if (!r.active) return 0;
   let v = 0;
