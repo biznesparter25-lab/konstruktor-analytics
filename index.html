@@ -338,6 +338,16 @@ table.t .name { max-width: 340px; overflow: hidden; text-overflow: ellipsis; whi
 .col-row.over-top { border-top: 2px solid var(--s1); border-radius: 0; }
 .col-row.over-bot { border-bottom: 2px solid var(--s1); border-radius: 0; }
 
+/* кольори магазинів */
+.sdot { display: inline-block; width: 8px; height: 8px; border-radius: 3px; margin-right: 6px; vertical-align: 1px; flex: none; }
+.stag { white-space: nowrap; }
+.seg button .sdot { opacity: .55; }
+.seg button.on .sdot { opacity: 1; }
+.seg button.on[style*="--sc"] { box-shadow: var(--shadow), inset 0 -2px 0 var(--sc); }
+tr.shared td { color: var(--ink-3); }
+tr.shared td b { color: var(--ink-3); }
+#main { border-top: 3px solid var(--store-accent, transparent); transition: border-color .2s; }
+
 </style>
 </head>
 <body>
@@ -891,11 +901,29 @@ const fin = () => (S.settings.finance_date === 'payment' ? 'payment' : 'order');
 // ---------- магазини ----------
 const activeStores = () => S.stores.filter((x) => x.active !== false);
 const storeLabel = (id) => (id == null ? 'Загальна' : (S.stores.find((x) => x.id === N(id))?.name || 'Сайт #' + id));
+// Колір магазину: той самий у всіх вкладках (1-й синій, 2-й помаранчевий, 3-й …)
+const STORE_COLORS = ['--s1', '--s2', '--s3'];
+const storeColor = (id) => { const i = activeStores().findIndex((x) => x.id === N(id)); return i < 0 ? '--ink-3' : STORE_COLORS[i % STORE_COLORS.length]; };
+const storeDot = (id) => `<i class="sdot" style="background:var(${storeColor(id)})"></i>`;
+const storeTag = (id) => (id == null ? '<span class="muted">Загальна</span>' : `<span class="stag">${storeDot(id)}${esc(storeLabel(id))}</span>`);
+// Загальні витрати діляться порівну між активними магазинами (налаштування general_split)
+const splitN = () => (S.settings.general_split === 'none' ? 0 : activeStores().length > 1 ? activeStores().length : 0);
 // Витрати й правила, що стосуються обраного магазину.
 // «Усі магазини» — все. Конкретний магазин — його власні записи + загальні правила
-// «% від виручки» і «за продаж» (рахуються від його виручки). Загальні витрати не діляться.
-const scopeExpenses = (list, st) => (st == null ? list : list.filter((e) => N(e.store_id) === st && e.store_id != null));
-const scopeRules = (list, st) => (st == null ? list : list.filter((r) => (r.store_id != null && N(r.store_id) === st) || (r.store_id == null && r.kind !== 'fixed_monthly')));
+// «% від виручки» і «за продаж» (рахуються від його виручки). Загальні суми (витрати без магазину,
+// щомісячні загальні правила) — порівну між магазинами, якщо увімкнено поділ; інакше не входять.
+const scopeExpenses = (list, st) => {
+  if (st == null) return list;
+  const own = list.filter((e) => e.store_id != null && N(e.store_id) === st);
+  const n = splitN(); if (!n) return own;
+  return [...own, ...list.filter((e) => e.store_id == null).map((e) => ({ ...e, amount_uah: N(e.amount_uah) / n, _share: n }))];
+};
+const scopeRules = (list, st) => {
+  if (st == null) return list;
+  const n = splitN();
+  return list.filter((r) => (r.store_id != null && N(r.store_id) === st) || (r.store_id == null && (r.kind !== 'fixed_monthly' || n)))
+    .map((r) => (r.store_id == null && r.kind === 'fixed_monthly' ? { ...r, value: N(r.value) / n, _share: n } : r));
+};
 function payMapOf(rows) { const m = {}; for (const r of rows || []) { const d = String(r.day).slice(0, 10); (m[d] = m[d] || {})[r.method] = { amount: N(r.amount), cnt: N(r.cnt) }; } return m; }
 function dayMap(rows) { const m = {}; for (const r of rows) m[String(r.day).slice(0, 10)] = { revenue: N(r.revenue), sales: N(r.sales) }; return m; }
 
@@ -986,7 +1014,7 @@ function updateSyncPill() {
   $('span', el).textContent = (backfill ? 'Завантажується історія…' : last ? 'Оновлено ' + fdt(last) : 'Ще не синхронізовано') + (S.live ? ' · онлайн' : '');
 }
 function storeTool() {
-  return `<div class="seg" id="storeSeg" role="group" aria-label="Магазин"><button data-store="" class="${S.store == null ? 'on' : ''}">Усі магазини</button>${activeStores().map((x) => `<button data-store="${x.id}" class="${S.store === x.id ? 'on' : ''}">${esc(x.name || 'Сайт #' + x.id)}</button>`).join('')}</div>`;
+  return `<div class="seg" id="storeSeg" role="group" aria-label="Магазин"><button data-store="" class="${S.store == null ? 'on' : ''}">Усі магазини</button>${activeStores().map((x) => `<button data-store="${x.id}" class="${S.store === x.id ? 'on' : ''}" style="--sc:var(${storeColor(x.id)})">${storeDot(x.id)}${esc(x.name || 'Сайт #' + x.id)}</button>`).join('')}</div>`;
 }
 function periodTool() {
   return `<div class="period"><button class="btn period-btn" id="periodBtn" aria-haspopup="true">${icon('cal')}<span class="lbl">${presetLabel()}</span><span class="rng">${fdate(S.from)} – ${fdate(S.to)}</span>${icon('chev')}</button></div>`;
@@ -1038,7 +1066,8 @@ async function render() {
   if (S.page !== 'days') document.querySelector('.cols-pop')?.remove();
   const [t, s] = TITLES[S.page]; $('#pageT').textContent = t;
   const usesStore = !['settings', 'stores', 'salary'].includes(S.page) && activeStores().length > 1;
-  $('#pageS').textContent = s + (usesStore ? ' · ' + (S.store == null ? 'усі магазини' : storeLabel(S.store)) : '');
+  $('#pageS').innerHTML = esc(s) + (usesStore ? ' · ' + (S.store == null ? 'усі магазини' : storeTag(S.store)) : '');
+  document.documentElement.style.setProperty('--store-accent', usesStore && S.store != null ? `var(${storeColor(S.store)})` : 'transparent');
   const usesPeriod = !['settings', 'months', 'salary'].includes(S.page);
   $('#tools').innerHTML = (usesStore ? storeTool() : '') + (usesPeriod ? periodTool() : '');
   $('#storeSeg')?.addEventListener('click', (e) => { const b = e.target.closest('[data-store]'); if (!b) return; S.store = b.dataset.store === '' ? null : N(b.dataset.store); store.set('store', S.store); S.data = null; render(); });
@@ -1218,21 +1247,22 @@ function productsMini(list) {
 PAGES.stores = async (seq) => {
   const list = activeStores();
   if (!list.length) { $('#page').innerHTML = '<div class="card"><div class="empty">Магазини з’являться після першої синхронізації. Назви задаються в Налаштуваннях.</div></div>'; return; }
-  const [res, expAll] = await Promise.all([Promise.all(list.map((x) => fetchDays(S.from, S.to, x.id))), api.list('expenses', { from: S.from, to: S.to })]);
+  const [res, expAll, payAll] = await Promise.all([Promise.all(list.map((x) => fetchDays(S.from, S.to, x.id))), api.list('expenses', { from: S.from, to: S.to }), api.list('payouts', { from: S.from, to: S.to }).catch(() => [])]);
   if (seq !== renderSeq) return;
   // Загальні витрати: записи без магазину + загальні щомісячні правила
-  const genDays = buildDays(S.from, S.to, [], expAll.filter((e) => e.store_id == null), S.rules.filter((r) => r.store_id == null && r.kind === 'fixed_monthly'), [], [], { managers_in_pnl: false });
+  const genDays = buildDays(S.from, S.to, [], [...expAll, ...payoutsAsExpenses(payAll)].filter((e) => e.store_id == null), [...S.rules, ...teamRules()].filter((r) => r.store_id == null && r.kind === 'fixed_monthly'), [], [], { managers_in_pnl: false });
   const G = totals(Object.values(genDays)); const general = G.ads + G.other;
-  const rows = list.map((x, i) => ({ st: x, days: res[i].days, T: totals(Object.values(res[i].days)), color: ['--s1', '--s2', '--s3'][i % 3] }));
+  const rows = list.map((x, i) => ({ st: x, days: res[i].days, T: totals(Object.values(res[i].days)), color: storeColor(x.id) }));
+  const split = splitN() > 0; // загальні вже розподілені по картках магазинів
   const rev = rows.reduce((a, r) => a + r.T.revenue, 0);
-  const net = rows.reduce((a, r) => a + r.T.net, 0) - general;
+  const net = rows.reduce((a, r) => a + r.T.net, 0) - (split ? 0 : general);
   const tg = S.settings.targets || {};
   $('#page').innerHTML = `
   <div class="kpis">
-    <div class="kpi hero"><div class="kpi-l"><span>Чистий прибуток усіх магазинів</span></div><div class="kpi-v ${net < 0 ? 'neg' : ''}">${uah(net)}</div><div class="kpi-s">Прибуток магазинів ${uah(net + general)} − загальні витрати ${uah(general)}</div></div>
+    <div class="kpi hero"><div class="kpi-l"><span>Чистий прибуток усіх магазинів</span></div><div class="kpi-v ${net < 0 ? 'neg' : ''}">${uah(net)}</div><div class="kpi-s">${split ? `Сума прибутку магазинів · загальні витрати ${uah(general)} вже розділені порівну` : `Прибуток магазинів ${uah(net + general)} − загальні витрати ${uah(general)}`}</div></div>
     ${kpi('Виручка разом', uah(rev), `${int(rows.reduce((a, r) => a + r.T.sales, 0))} продажів`)}
     ${kpi('Реклама разом', uah(rows.reduce((a, r) => a + r.T.ads, 0) + G.ads), G.ads ? `з них загальна ${uah(G.ads)}` : 'по магазинах')}
-    ${kpi('Загальні витрати', uah(general), 'не діляться між магазинами')}
+    ${kpi('Загальні витрати', uah(general), split ? `порівну: по ${uah(general / rows.length)} на магазин` : 'не діляться між магазинами')}
     ${kpi('Магазинів', int(rows.length), rows.map((r) => esc(r.st.name || '#' + r.st.id)).join(' · '))}
   </div>
   <div class="mgr-grid" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr))">${rows.map((r) => { const T = r.T; return `
@@ -1264,7 +1294,7 @@ PAGES.stores = async (seq) => {
     <section class="card">
       <div class="card-h" style="margin-bottom:6px"><h2 class="card-t" style="font-size:16px">Загальні витрати</h2></div>
       <div class="mgr-pay">${uah(general)}</div>
-      <div class="muted small" style="margin:-4px 0 10px">Витрати без прив’язки до магазину. Віднімаються лише із загального прибутку.</div>
+      <div class="muted small" style="margin:-4px 0 10px">${split ? `Витрати без прив’язки до магазину. Діляться порівну: по ${uah(general / rows.length)} на кожен магазин, уже враховано в картках вище.` : 'Витрати без прив’язки до магазину. Віднімаються лише із загального прибутку.'}</div>
       ${hbars(Object.entries(G.byCat).sort((a, b) => b[1] - a[1]).map(([c, v]) => ({ name: c, a: v, val: uah(v) })))}
       <button class="btn sm" style="margin-top:12px" data-go="expenses">Внести витрату</button>
     </section>
@@ -1582,8 +1612,8 @@ function expTable(list, compact = false) {
   if (!list.length) return '<div class="empty">Записів немає</div>';
   const showStore = activeStores().length > 1;
   const showWho = list.some((e) => e.created_by);
-  return `<table class="t"><thead><tr><th>Дата</th>${showStore ? '<th>Магазин</th>' : ''}${compact ? '' : '<th>Категорія</th>'}<th>Канал</th><th class="n">Сума</th><th class="n">У гривнях</th>${compact ? '' : '<th>Коментар</th>'}${showWho ? '<th>Вніс</th>' : ''}<th></th></tr></thead><tbody>${list.map((e) => `<tr>
-    <td style="white-space:nowrap">${fdate(e.date)}${e.date_to ? ' – ' + fdate(e.date_to) : ''}</td>${showStore ? `<td>${e.store_id == null ? '<span class="muted">Загальна</span>' : esc(storeLabel(e.store_id))}</td>` : ''}${compact ? '' : `<td>${esc(e.category)}</td>`}<td>${esc(e.channel || '')}</td>
+  return `<table class="t"><thead><tr><th>Дата</th>${showStore ? '<th>Магазин</th>' : ''}${compact ? '' : '<th>Категорія</th>'}<th>Канал</th><th class="n">Сума</th><th class="n">У гривнях</th>${compact ? '' : '<th>Коментар</th>'}${showWho ? '<th>Вніс</th>' : ''}<th></th></tr></thead><tbody>${list.map((e) => `<tr class="${e._share ? 'shared' : ''}" ${e._share ? 'title="Загальна витрата: у цьому магазині рахується його частка. Повна сума — у режимі «Усі магазини»."' : ''}>
+    <td style="white-space:nowrap">${fdate(e.date)}${e.date_to ? ' – ' + fdate(e.date_to) : ''}</td>${showStore ? `<td>${storeTag(e.store_id)}${e._share ? ` <span class="muted small">· частка 1/${e._share}</span>` : ''}</td>` : ''}${compact ? '' : `<td>${esc(e.category)}</td>`}<td>${esc(e.channel || '')}</td>
     <td class="n">${nf2.format(N(e.amount))} ${e.currency === 'UAH' ? '₴' : esc(e.currency)}</td><td class="n">${uah(N(e.amount_uah))}</td>${compact ? '' : `<td class="muted small">${esc(e.comment || '')}</td>`}${showWho ? `<td class="muted small" title="${esc(e.created_by || '')}">${esc((e.created_by || '').split('@')[0])}</td>` : ''}
     <td class="n" style="white-space:nowrap">${compact ? '' : `<button class="icon-btn" data-eedit="${e.id}" title="Редагувати">${icon('edit')}</button>`}<button class="icon-btn" data-edel="${e.id}" title="Видалити">${icon('trash')}</button></td></tr>`).join('')}</tbody></table>`;
 }
@@ -1645,7 +1675,7 @@ PAGES.expenses = async (seq) => {
     <section class="card c12" id="wfpCard"><div class="card-h"><div><h2 class="card-t">WayForPay</h2><div class="card-s">Фактична комісія з кожного платежу за період. Підтягується автоматично і віднімається в день і в магазині замовлення.</div></div><button class="btn sm" id="wfpSync">${icon('sync')}Оновити WayForPay</button></div><div id="wfpBody"><div class="empty">Завантаження…</div></div></section>
     <section class="card c12"><div class="card-h"><div><h2 class="card-t">Автоматичні витрати</h2><div class="card-s">Рахуються самі кожного дня: податок від виручки, фіксовані платежі на місяць, витрати на кожен продаж, комісії платіжних систем (WayForPay, накладений платіж)</div></div></div>
       <div class="tw"><table class="t"><thead><tr><th>Назва</th><th>Розмір</th><th>Магазин</th><th>Категорія</th><th>Діє</th><th class="n">За період</th><th>Статус</th><th></th></tr></thead><tbody>${S.rules.map((r) => `<tr>
-        <td><b>${esc(r.name)}</b></td><td>${kindL[r.kind](r.value, r)}</td><td>${r.store_id == null ? '<span class="muted">Усі</span>' : esc(storeLabel(r.store_id))}</td><td>${esc(r.category)}</td><td class="muted small">${r.date_from ? 'з ' + fdate(r.date_from) : 'завжди'}${r.date_to ? ' по ' + fdate(r.date_to) : ''}</td>
+        <td><b>${esc(r.name)}</b></td><td>${kindL[r.kind](r.value, r)}</td><td>${r.store_id == null ? '<span class="muted">Усі</span>' : storeTag(r.store_id)}</td><td>${esc(r.category)}</td><td class="muted small">${r.date_from ? 'з ' + fdate(r.date_from) : 'завжди'}${r.date_to ? ' по ' + fdate(r.date_to) : ''}</td>
         <td class="n">${D.T.byRule[r.id] != null ? uah(D.T.byRule[r.id]) : '<span class="muted">—</span>'}</td>
         <td><button class="btn sm ${r.active ? '' : 'ghost'}" data-rtoggle="${r.id}">${r.active ? '<span class="flag good">Увімкнено</span>' : '<span class="flag warn">Вимкнено</span>'}</button></td>
         <td class="n" style="white-space:nowrap"><button class="icon-btn" data-redit="${r.id}" title="Редагувати">${icon('edit')}</button><button class="icon-btn" data-rdel="${r.id}" title="Видалити">${icon('trash')}</button></td></tr>`).join('') || '<tr><td colspan="8" class="empty">Правил ще немає. Додайте, наприклад, «Єдиний податок — 5% від виручки».</td></tr>'}</tbody></table></div>
@@ -1711,7 +1741,7 @@ async function renderWfp(seq) {
       <div class="c5"><table class="t"><thead><tr><th>Спосіб оплати</th><th class="n">Платежів</th><th class="n">Сума</th><th class="n">Комісія</th><th class="n">%</th></tr></thead><tbody>${Object.entries(by).sort((a, b) => b[1].fee - a[1].fee).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="n">${int(v.cnt)}</td><td class="n">${uah(v.amount)}</td><td class="n">${uah2(Math.round(v.fee * 100) / 100)}</td><td class="n">${pct(div(v.fee, v.amount), 2)}</td></tr>`).join('')}</tbody></table></div>
       <div class="c7"><div class="tw tbl-scroll" style="max-height:320px"><table class="t"><thead><tr><th>Дата</th><th>Номер WayForPay</th><th>Заявка</th><th>Спосіб</th><th class="n">Сума</th><th class="n">Комісія</th><th>Статус</th></tr></thead><tbody>${list.slice(0, 200).map((x) => `<tr>
         <td style="white-space:nowrap">${fdt(x.tx_time)}</td><td class="small">${esc(x.order_reference)}${(x.tx_type || '').toUpperCase() === 'REFUND' ? ' <span class="pill fail">повернення</span>' : ''}</td>
-        <td>${x.order_id ? `#${x.order_id} <span class="muted small">${x.sajt == null ? '' : esc(storeLabel(x.sajt))}</span>` : '<span class="flag warn">не знайдено</span>'}</td>
+        <td>${x.order_id ? `#${x.order_id} <span class="small">${x.sajt == null ? '' : storeTag(x.sajt)}</span>` : '<span class="flag warn">не знайдено</span>'}</td>
         <td class="small">${esc(PAYSYS[(x.payment_system || '').toLowerCase()] || x.payment_system || '')}</td><td class="n">${uah2(N(x.amount))}</td><td class="n">${uah2(N(x.fee))}</td>
         <td>${x.status === 'Approved' ? '<span class="pill success">успішно</span>' : `<span class="pill work">${esc(x.status || '')}</span>`}</td></tr>`).join('')}</tbody></table></div></div>
     </div>`;
@@ -1791,7 +1821,7 @@ PAGES.salary = async (seq) => {
     <section class="card c12"><div class="card-h"><div><h2 class="card-t">Виплати за ${MONTHS[+m.slice(5, 7) - 1].toLowerCase()}</h2><div class="card-s">Разові суми, внесені вручну</div></div></div>
       <div class="tw">${payouts.length ? `<table class="t"><thead><tr><th>Дата</th><th>Кому</th><th>Роль</th><th>Магазин</th><th class="n">Сума</th><th class="n">У гривнях</th><th>Коментар</th><th>Вніс</th><th></th></tr></thead><tbody>${payouts.map((x) => { const p = people.find((q) => q.id === N(x.person_id)); return `<tr>
         <td style="white-space:nowrap">${fdate(x.date)}${x.date_to ? ' – ' + fdate(x.date_to) : ''}</td><td><b>${esc(pname(x.person_id))}</b></td><td class="muted small">${p ? ROLE[p.role] : ''}</td>
-        <td>${x.store_id == null ? '<span class="muted">Загальна</span>' : esc(storeLabel(x.store_id))}</td>
+        <td>${storeTag(x.store_id)}</td>
         <td class="n">${nf2.format(N(x.amount))} ${x.currency === 'UAH' ? '₴' : esc(x.currency)}</td><td class="n">${uah(N(x.amount_uah))}</td><td class="muted small">${esc(x.comment || '')}</td><td class="muted small">${esc((x.created_by || '').split('@')[0])}</td>
         <td class="n" style="white-space:nowrap"><button class="icon-btn" data-pedit="${x.id}" title="Редагувати">${icon('edit')}</button><button class="icon-btn" data-pdel="${x.id}" title="Видалити">${icon('trash')}</button></td></tr>`; }).join('')}</tbody></table>` : '<div class="empty">Цього місяця виплат ще не вносили</div>'}</div></section>
     <section class="card c7"><div class="card-h"><div><h2 class="card-t">Люди</h2><div class="card-s">Власники й команда. Для власника задайте відсоток від прибутку або фіксовану суму.</div></div></div>
@@ -1887,6 +1917,9 @@ PAGES.settings = async (seq) => {
       <div style="margin-top:14px;font-size:12px;color:var(--ink-2);font-weight:500">Коли замовлення вважати продажем</div>
       <label style="display:flex;gap:10px;margin:8px 0;align-items:flex-start"><input type="radio" name="rmode" value="confirmed" ${st.revenue_mode !== 'sale' ? 'checked' : ''}><span><b>Одразу після підтвердження.</b> <span class="muted small">Як в аналітиці одягу: підтверджене замовлення одразу йде у виручку й прибуток свого дня. Якщо потім буде відмова, воно перейде у відмови.</span></span></label>
       <label style="display:flex;gap:10px;margin:8px 0;align-items:flex-start"><input type="radio" name="rmode" value="sale" ${st.revenue_mode === 'sale' ? 'checked' : ''}><span><b>Лише після викупу</b> (статус «Продаж»). <span class="muted small">Обережніше: гроші з'являються, коли клієнт забрав посилку.</span></span></label>
+      <div style="margin-top:14px;font-size:12px;color:var(--ink-2);font-weight:500">Загальні витрати (без магазину)</div>
+      <label style="display:flex;gap:10px;margin:8px 0;align-items:flex-start"><input type="radio" name="gsplit" value="equal" ${st.general_split !== 'none' ? 'checked' : ''}><span><b>Ділити порівну між магазинами.</b> <span class="muted small">Амортизація 200 ₴ → по 100 ₴ у звіт кожного магазину. Сума прибутків магазинів = прибуток бізнесу.</span></span></label>
+      <label style="display:flex;gap:10px;margin:8px 0;align-items:flex-start"><input type="radio" name="gsplit" value="none" ${st.general_split === 'none' ? 'checked' : ''}><span><b>Не ділити.</b> <span class="muted small">Віднімаються лише із загального прибутку в режимі «Усі магазини».</span></span></label>
       <label style="display:flex;gap:10px;margin:12px 0 4px;align-items:center"><input type="checkbox" id="sMgr" ${st.managers_in_pnl !== false ? 'checked' : ''}><span>Віднімати зарплату менеджерів від прибутку</span></label>
       <div style="margin-top:14px;font-size:12px;color:var(--ink-2);font-weight:500">Цілі (підсвічуються зеленим або червоним)</div>
       <div class="form" style="grid-template-columns:1fr 1fr 1fr;margin-top:6px">
@@ -1906,7 +1939,7 @@ PAGES.settings = async (seq) => {
       ${S.managers.length ? '<div style="margin-top:12px"><button class="btn primary" id="mgSave">Зберегти менеджерів</button></div>' : ''}</section>
 
     <section class="card c12"><div class="card-h"><div><h2 class="card-t">Вартість повернення посилок</h2><div class="card-s">Останні відмови з ТТН і яку вартість доставки вдалося взяти з SalesDrive. Якщо скрізь «не знайдено», надішліть скрін цього блоку.</div></div></div>
-      <div class="tw">${(dsample || []).length ? `<table class="t"><thead><tr><th>Замовлення</th><th>Магазин</th><th>Статус</th><th>ТТН</th><th class="n">Вартість</th><th>Поля доставки з CRM</th></tr></thead><tbody>${dsample.map((d) => `<tr><td>#${d.id} <span class="muted small">${fdate(String(d.order_date).slice(0, 10))}</span></td><td>${d.sajt == null ? '—' : esc(storeLabel(d.sajt))}</td><td>${esc(d.status)}</td><td class="small">${esc(d.ttn || '—')}</td>
+      <div class="tw">${(dsample || []).length ? `<table class="t"><thead><tr><th>Замовлення</th><th>Магазин</th><th>Статус</th><th>ТТН</th><th class="n">Вартість</th><th>Поля доставки з CRM</th></tr></thead><tbody>${dsample.map((d) => `<tr><td>#${d.id} <span class="muted small">${fdate(String(d.order_date).slice(0, 10))}</span></td><td>${d.sajt == null ? '—' : storeTag(d.sajt)}</td><td>${esc(d.status)}</td><td class="small">${esc(d.ttn || '—')}</td>
         <td class="n">${N(d.delivery_cost) ? `<b>${uah2(N(d.delivery_cost))}</b>` : '<span class="flag warn">не знайдено</span>'}</td>
         <td class="muted small" style="max-width:460px;word-break:break-all">${esc(Object.entries(d.delivery_json || {}).filter(([k, v]) => v !== null && v !== '' && typeof v !== 'object').map(([k, v]) => k + ': ' + v).join(', ')).slice(0, 400)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">Даних ще немає. Оновіть функцію синхронізації й перезавантажте період (див. інструкцію).</div>'}</div></section>
 
@@ -1937,7 +1970,7 @@ PAGES.settings = async (seq) => {
     const cats = split($('#sCats').value); if (!cats.includes('Реклама')) cats.unshift('Реклама');
     const upd = {
       store_name: $('#sName').value.trim() || 'Магазин конструкторів', refusal_cost_default: numv('#sRefCost') || 0, usd_rate: numv('#sUsd') || 41.5, eur_rate: numv('#sEur') || 45,
-      finance_date: $('input[name=fin]:checked')?.value || 'order', revenue_mode: $('input[name=rmode]:checked')?.value || 'confirmed', managers_in_pnl: $('#sMgr').checked,
+      finance_date: $('input[name=fin]:checked')?.value || 'order', revenue_mode: $('input[name=rmode]:checked')?.value || 'confirmed', general_split: $('input[name=gsplit]:checked')?.value || 'equal', managers_in_pnl: $('#sMgr').checked,
       targets: { romi: numv('#tRomi') != null ? numv('#tRomi') / 100 : null, cpo: numv('#tCpo'), conversion: numv('#tConv') != null ? numv('#tConv') / 100 : null },
       expense_categories: cats, ad_channels: split($('#sChans').value),
     };
