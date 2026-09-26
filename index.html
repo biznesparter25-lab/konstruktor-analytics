@@ -399,6 +399,7 @@ function createDemoApi() {
         payment_amount: amount, cost_price: cost, shipping_costs: st === 6 ? ship + 110 : (sale ? ship : 0), commission: sale ? comm : 0, expenses_amount: 0,
         payed_amount: payed, rest_pay: (sale || st === 3) ? amount - payed : 0, upsell_amount: upsell,
         rejection_reason: st === 5 || st === 6 ? pick(REASONS) : null, utm_source: src,
+        ttn: st >= 3 && st !== 7 ? '2045' + id : null, delivery_cost: (st === 5 || st === 6) && rnd() < 0.85 ? 120 + Math.round(rnd() * 90) : 0,
         sajt, manager_id: sajt === 21 ? w([[3, 60], [4, 40]]) : w([[4, 30], [5, 70]]), payment_method: cod ? 'Накладений платіж' : pick(['Оплата на картку', 'LiqPay', 'Monobank']),
       });
       its.forEach((i, pos) => items.push({ order_id: id, pos, product_id: i.pi + 1, name: i.name, sku: 'KB-' + (100 + i.pi), amount: i.qty, price: i.price, cost_price: i.cost }));
@@ -457,10 +458,11 @@ function createDemoApi() {
     stats_daily({ p_from, p_to, p_fin, p_store }) {
       const orders = scoped(p_store);
       const days = new Map();
-      const g = (d) => { if (!days.has(d)) days.set(d, { day: d, leads: 0, confirmed: 0, unconfirmed: 0, success: 0, fail: 0, returns: 0, work: 0, sales: 0, revenue: 0, cogs: 0, order_costs: 0, return_costs: 0, payed: 0, upsell: 0, pend_sales: 0, pend_revenue: 0, pend_cogs: 0, pend_costs: 0 }); return days.get(d); };
+      const g = (d) => { if (!days.has(d)) days.set(d, { day: d, leads: 0, confirmed: 0, unconfirmed: 0, success: 0, fail: 0, returns: 0, work: 0, sales: 0, revenue: 0, cogs: 0, order_costs: 0, return_costs: 0, payed: 0, upsell: 0, pend_sales: 0, pend_revenue: 0, pend_cogs: 0, pend_costs: 0, refusal_ship: 0, refusal_ship_unknown: 0 }); return days.get(d); };
       for (const o of orders) {
         const c = cat(o); if (c === 'ignore') continue;
-        if (inR(o.order_date, p_from, p_to)) { const x = g(o.order_date); x.leads++; x[c === 'return' ? 'returns' : c]++; if (conf(o)) x.confirmed++; else if (c === 'work') x.unconfirmed++; if (c === 'work' && conf(o)) { x.pend_sales++; x.pend_revenue += o.payment_amount; x.pend_cogs += o.cost_price; x.pend_costs += o.shipping_costs + o.commission; } }
+        if (inR(o.order_date, p_from, p_to)) { const x = g(o.order_date); x.leads++; x[c === 'return' ? 'returns' : c]++; if (conf(o)) x.confirmed++; else if (c === 'work') x.unconfirmed++; if ((c === 'fail' || c === 'return') && (o.st === undefined)) { if (o.delivery_cost > 0) x.refusal_ship += o.delivery_cost; else if (o.ttn) x.refusal_ship_unknown++; }
+          if (c === 'work' && conf(o)) { x.pend_sales++; x.pend_revenue += o.payment_amount; x.pend_cogs += o.cost_price; x.pend_costs += o.shipping_costs + o.commission; } }
         const fd = fin(o, p_fin);
         if (inR(fd, p_from, p_to)) {
           if (c === 'success') { const x = g(fd); x.sales++; x.revenue += o.payment_amount; x.cogs += o.cost_price; x.order_costs += o.shipping_costs + o.commission + o.expenses_amount; x.payed += o.payed_amount; x.upsell += o.upsell_amount; }
@@ -526,6 +528,9 @@ function createDemoApi() {
     stats_manager_daily({ p_from, p_to, p_fin, p_store }) {
       const list = scoped(p_store).filter((o) => cat(o) === 'success' && inR(fin(o, p_fin), p_from, p_to));
       return group(list, (o) => fin(o, p_fin) + '|' + o.manager_id, (k) => ({ day: k.split('|')[0], manager_id: Number(k.split('|')[1]), sales: 0, upsell: 0 }), (x, o) => { x.sales++; x.upsell += o.upsell_amount; });
+    },
+    delivery_sample() {
+      return orders.filter((o) => ['fail', 'return'].includes(cat(o)) && o.ttn).slice(-5).reverse().map((o) => ({ id: o.id, order_date: o.order_date, status: statuses.find((x) => x.id === o.status_id)?.name, ttn: o.ttn, delivery_cost: o.delivery_cost, delivery_json: { trackingNumber: o.ttn, provider: 'novaposhta', cost: o.delivery_cost, statusCode: 102 } }));
     },
     stats_overview_meta() {
       return { orders: orders.length, first_order: orders[0]?.order_date, last_order: orders[orders.length - 1]?.order_time,
@@ -730,6 +735,8 @@ function buildDays(from, to, daily, expenses, rules, mgrDaily, managers, setting
     const x = days[String(r.day).slice(0, 10)]; if (!x) continue;
     for (const k of ['leads', 'confirmed', 'unconfirmed', 'success', 'fail', 'returns', 'work', 'sales', 'revenue', 'cogs', 'order_costs', 'return_costs', 'payed', 'upsell']) x[k] += N(r[k]);
     // Режим «виручка при підтвердженні»: підтверджені, ще не викуплені замовлення теж рахуються як продаж
+    // Доставка відмов: вартість з трекінгу, а де її немає — сума з налаштувань за кожну посилку з ТТН
+    x.return_costs += N(r.refusal_ship) + N(r.refusal_ship_unknown) * N(settings.refusal_cost_default);
     if (settings.revenue_mode !== 'sale') { x.sales += N(r.pend_sales); x.revenue += N(r.pend_revenue); x.cogs += N(r.pend_cogs); x.order_costs += N(r.pend_costs); x.pending += N(r.pend_sales); }
   }
   const add = (x, cat, v) => { x.byCat[cat] = (x.byCat[cat] || 0) + v; };
@@ -1051,7 +1058,7 @@ function hbars(rows, { two = false } = {}) {
   return rows.map((r) => `<div class="hb" data-tip="${esc(r.tip || '')}"><div class="nm" title="${esc(r.name)}">${r.html || esc(r.name)}</div><div class="tr"><div class="fl" style="width:${(r.a / max * 100).toFixed(1)}%"></div>${two && r.b ? `<div class="fl s2" style="width:${(r.b / max * 100).toFixed(1)}%"></div>` : ''}</div><div class="val">${r.val}</div></div>`).join('');
 }
 function plTable(T) {
-  const rows = [['Виручка', T.revenue, 'tot'], ['Собівартість товарів', -T.cogs, 'sub'], ['Доставка та комісії', -T.order_costs, 'sub'], ['Витрати на повернення', -T.return_costs, 'sub'], ['Валовий прибуток', T.gross, 'tot'], ['Реклама', -T.ads, 'sub']];
+  const rows = [['Виручка', T.revenue, 'tot'], ['Собівартість товарів', -T.cogs, 'sub'], ['Доставка та комісії', -T.order_costs, 'sub'], ['Повернення посилок (відмови)', -T.return_costs, 'sub'], ['Валовий прибуток', T.gross, 'tot'], ['Реклама', -T.ads, 'sub']];
   for (const [c, v] of Object.entries(T.byCat).sort((a, b) => b[1] - a[1])) if (c !== 'Реклама') rows.push([c, -v, 'sub']);
   rows.push(['Чистий прибуток', T.net, 'tot final']);
   const base = Math.max(T.revenue, 1);
@@ -1225,7 +1232,7 @@ PAGES.days = async (seq) => {
   const T = D.T;
   const cols = [
     ['Дата', (r) => `<b>${fdate(r.d)}</b> <span class="muted small">${['нд', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'][P(r.d).getUTCDay()]}</span>`],
-    ['Заявки', (r) => int(r.leads), 1], ['Підтв.', (r) => `<b>${int(r.confirmed)}</b>`, 1], ['Не підтв.', (r) => (r.unconfirmed ? `<span class="warn-t">${int(r.unconfirmed)}</span>` : '0'), 1], ['% підтв.', (r) => pct(r.confRate, 0), 1], ['Продажі', (r) => int(r.sales), 1], ['Відмови', (r) => (r.fail ? `<span class="neg">${int(r.fail)}</span>` : '0'), 1], ['Повер.', (r) => int(r.returns), 1],
+    ['Заявки', (r) => int(r.leads), 1], ['Підтв.', (r) => `<b>${int(r.confirmed)}</b>`, 1], ['Не підтв.', (r) => (r.unconfirmed ? `<span class="warn-t">${int(r.unconfirmed)}</span>` : '0'), 1], ['% підтв.', (r) => pct(r.confRate, 0), 1], ['Продажі', (r) => int(r.sales), 1], ['Відмови', (r) => (r.fail ? `<span class="neg">${int(r.fail)}</span>` : '0'), 1], ['Повер.', (r) => int(r.returns), 1], ['Доставка відмов', (r) => (r.return_costs ? `<span class="neg">${uah(r.return_costs)}</span>` : '<span class="muted">0 ₴</span>'), 1],
     ['Конверсія', (r) => pct(r.conv, 0), 1], ['Виручка', (r) => uah(r.revenue), 1], ['Собівартість', (r) => uah(r.cogs), 1], ['Валовий', (r) => uah(r.gross), 1],
     ['Реклама', (r) => (r.d ? `<button class="cell-edit" data-adday="${r.d}" title="Натисніть, щоб внести рекламу за цей день">${r.ads ? uah(r.ads) : '<span class="muted">+ внести</span>'}${icon('edit')}</button>` : uah(r.ads)), 1], ['Інші витрати', (r) => uah(r.other), 1], ['Чистий прибуток', (r) => `<b class="${r.net < 0 ? 'neg' : ''}">${uah(r.net)}</b>`, 1], ['Ціна продажу', (r) => uah(r.cpo), 1],
   ];
@@ -1683,7 +1690,7 @@ PAGES.salary = async (seq) => {
 
 // ================================================================ НАЛАШТУВАННЯ
 PAGES.settings = async (seq) => {
-  const [log, meta] = await Promise.all([api.list('sync_log'), api.rpc('stats_overview_meta', {})]);
+  const [log, meta, dsample] = await Promise.all([api.list('sync_log'), api.rpc('stats_overview_meta', {}), api.rpc('delivery_sample', {}).catch(() => [])]);
   S.statuses = await api.list('statuses'); S.managers = await api.list('managers'); S.stores = await api.list('stores');
   if (seq !== renderSeq) return;
   const st = S.settings, m = Array.isArray(meta) ? meta[0] : meta, tg = st.targets || {};
@@ -1707,6 +1714,7 @@ PAGES.settings = async (seq) => {
         <label class="f" style="grid-column:span 2">Назва в меню<input type="text" id="sName" value="${esc(st.store_name || '')}" placeholder="Магазин конструкторів"></label>
         <label class="f">Курс долара, ₴<input type="text" id="sUsd" inputmode="decimal" value="${esc(st.usd_rate ?? '')}"></label>
         <label class="f">Курс євро, ₴<input type="text" id="sEur" inputmode="decimal" value="${esc(st.eur_rate ?? '')}"></label>
+        <label class="f" style="grid-column:span 2">Вартість повернення посилки, ₴ <span class="muted small">(якщо в CRM не вказано; 0 — не рахувати)</span><input type="text" id="sRefCost" inputmode="decimal" value="${esc(st.refusal_cost_default ?? '')}" placeholder="напр. 180"></label>
       </div>
       <div style="margin-top:14px;font-size:12px;color:var(--ink-2);font-weight:500">Коли рахувати гроші від продажу</div>
       <label style="display:flex;gap:10px;margin:8px 0;align-items:flex-start"><input type="radio" name="fin" value="order" ${fin() === 'order' ? 'checked' : ''}><span><b>За датою заявки.</b> <span class="muted small">Замовлення від 30.09, викуплене 03.10, потрапить у вересень. Реклама і продажі порівнюються найточніше.</span></span></label>
@@ -1731,6 +1739,11 @@ PAGES.settings = async (seq) => {
     <section class="card c5"><div class="card-h"><div><h2 class="card-t">Менеджери</h2><div class="card-s">З’являються автоматично із замовлень. Вкажіть імена і ставки.</div></div></div>
       <div class="tw"><table class="t"><thead><tr><th>ID</th><th>Ім’я</th><th>₴ за продаж</th><th>% допрод.</th></tr></thead><tbody>${S.managers.map((mg) => `<tr data-mg="${mg.id}"><td class="muted">${mg.id}</td><td><input type="text" data-f="name" value="${esc(mg.name || '')}" placeholder="Ім’я"></td><td><input type="text" data-f="rate_per_order" inputmode="decimal" value="${N(mg.rate_per_order) || ''}" style="width:80px"></td><td><input type="text" data-f="upsell_pct" inputmode="decimal" value="${N(mg.upsell_pct) ? Math.round(N(mg.upsell_pct) * 100) : ''}" style="width:70px"></td></tr>`).join('') || '<tr><td colspan="4" class="empty">Поки немає</td></tr>'}</tbody></table></div>
       ${S.managers.length ? '<div style="margin-top:12px"><button class="btn primary" id="mgSave">Зберегти менеджерів</button></div>' : ''}</section>
+
+    <section class="card c12"><div class="card-h"><div><h2 class="card-t">Вартість повернення посилок</h2><div class="card-s">Останні відмови з ТТН і яку вартість доставки вдалося взяти з SalesDrive. Якщо скрізь «не знайдено», надішліть скрін цього блоку.</div></div></div>
+      <div class="tw">${(dsample || []).length ? `<table class="t"><thead><tr><th>Замовлення</th><th>Статус</th><th>ТТН</th><th class="n">Вартість</th><th>Поля доставки з CRM</th></tr></thead><tbody>${dsample.map((d) => `<tr><td>#${d.id} <span class="muted small">${fdate(String(d.order_date).slice(0, 10))}</span></td><td>${esc(d.status)}</td><td class="small">${esc(d.ttn || '—')}</td>
+        <td class="n">${N(d.delivery_cost) ? `<b>${uah2(N(d.delivery_cost))}</b>` : '<span class="flag warn">не знайдено</span>'}</td>
+        <td class="muted small" style="max-width:460px;word-break:break-all">${esc(Object.entries(d.delivery_json || {}).filter(([k, v]) => v !== null && v !== '' && typeof v !== 'object').map(([k, v]) => k + ': ' + v).join(', ')).slice(0, 400)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">Даних ще немає. Оновіть функцію синхронізації й перезавантажте період (див. інструкцію).</div>'}</div></section>
 
     <section class="card c12"><div class="card-h"><div><h2 class="card-t">Магазини</h2><div class="card-s">Кожен сайт із SalesDrive (поле «Сайт» у заявці) — окремий магазин. Нові сайти з’являються тут самі після синхронізації. Дайте їм назви; сайти, які не належать до конструкторів, вимкніть.</div></div></div>
       <div class="tw"><table class="t"><thead><tr><th>Сайт у SalesDrive</th><th>Назва магазину</th><th class="n">Замовлень</th><th>Рахувати у звітах</th></tr></thead><tbody>${S.stores.map((x) => { const site = (m?.sites || []).find((z) => N(z.id) === x.id); return `<tr data-shop="${x.id}"><td class="muted">#${x.id}</td><td><input type="text" data-f="name" value="${esc(x.name || '')}" placeholder="Назва" style="max-width:320px"></td><td class="n">${int(N(site?.orders))}</td><td><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-f="active" ${x.active !== false ? 'checked' : ''}>так</label></td></tr>`; }).join('') || '<tr><td colspan="4" class="empty">Магазини з’являться після першої синхронізації</td></tr>'}</tbody></table></div>
@@ -1758,7 +1771,7 @@ PAGES.settings = async (seq) => {
     const numv = (id) => { const v = parseFloat(String($(id).value).replace(',', '.')); return Number.isFinite(v) ? v : null; };
     const cats = split($('#sCats').value); if (!cats.includes('Реклама')) cats.unshift('Реклама');
     const upd = {
-      store_name: $('#sName').value.trim() || 'Магазин конструкторів', usd_rate: numv('#sUsd') || 41.5, eur_rate: numv('#sEur') || 45,
+      store_name: $('#sName').value.trim() || 'Магазин конструкторів', refusal_cost_default: numv('#sRefCost') || 0, usd_rate: numv('#sUsd') || 41.5, eur_rate: numv('#sEur') || 45,
       finance_date: $('input[name=fin]:checked')?.value || 'order', revenue_mode: $('input[name=rmode]:checked')?.value || 'confirmed', managers_in_pnl: $('#sMgr').checked,
       targets: { romi: numv('#tRomi') != null ? numv('#tRomi') / 100 : null, cpo: numv('#tCpo'), conversion: numv('#tConv') != null ? numv('#tConv') / 100 : null },
       expense_categories: cats, ad_channels: split($('#sChans').value),

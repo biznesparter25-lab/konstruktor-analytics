@@ -28,6 +28,9 @@ create table if not exists orders (
   payment_method   text,
   synced_at        timestamptz not null default now()
 );
+alter table orders add column if not exists ttn text;                     -- номер ТТН
+alter table orders add column if not exists delivery_cost numeric(14,2) not null default 0;  -- вартість доставки з трекінгу
+alter table orders add column if not exists delivery_json jsonb;           -- дані доставки як є (для перевірки)
 create index if not exists orders_order_date_idx   on orders (order_date);
 create index if not exists orders_payment_date_idx on orders (payment_date);
 create index if not exists orders_status_idx       on orders (status_id);
@@ -257,7 +260,8 @@ returns table (
   day date, leads int, confirmed int, unconfirmed int, success int, fail int, returns int, work int,
   sales int, revenue numeric, cogs numeric, order_costs numeric, return_costs numeric,
   payed numeric, upsell numeric,
-  pend_sales int, pend_revenue numeric, pend_cogs numeric, pend_costs numeric
+  pend_sales int, pend_revenue numeric, pend_cogs numeric, pend_costs numeric,
+  refusal_ship numeric, refusal_ship_unknown int
 )
 language sql stable as $$
   with f as (
@@ -273,7 +277,10 @@ language sql stable as $$
            count(*) filter (where s.category = 'work' and s.confirmed)::int pend_sales,
            coalesce(sum(o.payment_amount) filter (where s.category = 'work' and s.confirmed), 0) pend_revenue,
            coalesce(sum(o.cost_price) filter (where s.category = 'work' and s.confirmed), 0) pend_cogs,
-           coalesce(sum(order_extra(o)) filter (where s.category = 'work' and s.confirmed), 0) pend_costs
+           coalesce(sum(order_extra(o)) filter (where s.category = 'work' and s.confirmed), 0) pend_costs,
+           -- доставка посилок, від яких відмовились (ми платимо за повернення)
+           coalesce(sum(o.delivery_cost) filter (where s.category in ('fail','return') and o.delivery_cost > 0), 0) refusal_ship,
+           count(*) filter (where s.category in ('fail','return') and coalesce(o.delivery_cost,0) = 0 and coalesce(o.ttn,'') <> '')::int refusal_ship_unknown
     from orders o left join statuses s on s.id = o.status_id
     where in_scope(o.sajt, p_store) and o.order_date between p_from and p_to and coalesce(s.category,'work') <> 'ignore'
     group by 1
@@ -294,7 +301,8 @@ language sql stable as $$
          coalesce(f.leads,0), coalesce(f.confirmed,0), coalesce(f.unconfirmed,0), coalesce(f.success,0), coalesce(f.fail,0), coalesce(f.returns,0), coalesce(f.work,0),
          coalesce(m.sales,0), coalesce(m.revenue,0), coalesce(m.cogs,0), coalesce(m.order_costs,0), coalesce(m.return_costs,0),
          coalesce(m.payed,0), coalesce(m.upsell,0),
-         coalesce(f.pend_sales,0), coalesce(f.pend_revenue,0), coalesce(f.pend_cogs,0), coalesce(f.pend_costs,0)
+         coalesce(f.pend_sales,0), coalesce(f.pend_revenue,0), coalesce(f.pend_cogs,0), coalesce(f.pend_costs,0),
+         coalesce(f.refusal_ship,0), coalesce(f.refusal_ship_unknown,0)
   from f full join m on m.d = f.d
   order by 1
 $$;
@@ -421,6 +429,16 @@ language sql stable as $$
   from orders o join statuses s on s.id = o.status_id
   where in_scope(o.sajt, p_store) and s.category = 'success' and o.manager_id is not null and fin_date(o, p_fin) between p_from and p_to
   group by 1, 2
+$$;
+
+-- Приклади даних доставки для перевірки (останні відмови з ТТН)
+create or replace function delivery_sample()
+returns table (id bigint, order_date date, status text, ttn text, delivery_cost numeric, delivery_json jsonb)
+language sql stable as $$
+  select o.id, o.order_date, s.name, o.ttn, o.delivery_cost, o.delivery_json
+  from orders o join statuses s on s.id = o.status_id
+  where s.category in ('fail','return') and o.delivery_json is not null
+  order by o.order_time desc limit 5
 $$;
 
 -- Загальна інформація для сторінки налаштувань

@@ -67,6 +67,20 @@ function guessCategory(name = "", type?: number): string {
   return "work"
 }
 
+// Вартість доставки з даних трекінгу (SalesDrive показує її як «Вартість доставки» біля ТТН).
+// Назва поля може відрізнятися, тому шукаємо серед відомих варіантів, а потім за назвою.
+const COST_KEYS = ["cost", "deliveryCost", "documentCost", "DocumentCost", "costOnSite", "CostOnSite", "deliveryPrice", "shippingCost", "price", "sum"]
+function deliveryCost(d: any): number {
+  if (!d || typeof d !== "object") return 0
+  for (const k of COST_KEYS) { const v = num(d[k]); if (v > 0 && v < 20000) return v }
+  for (const [k, v] of Object.entries(d)) {
+    if (/(cost|price|вартіст)/i.test(k) && !/(declar|announc|assess|insur|postpay|redeliver|backward|seats|weight)/i.test(k)) {
+      const n = num(v); if (n > 0 && n < 20000) return n
+    }
+  }
+  return 0
+}
+
 // Чи вважати статус «підтвердженим» (замовлення підтверджене клієнтом і йде далі)
 function guessConfirmed(name = "", category = "work"): boolean {
   if (category === "success") return true
@@ -172,6 +186,8 @@ Deno.serve(async (req) => {
       const reason = rr == null || rr === "" ? null
         : typeof rr === "object" ? (rr.name || rr.text || null) : (reasonNames[String(rr)] || String(rr))
       const pmRaw = o.payment_method != null ? String(o.payment_method) : null
+      const dList: any[] = Array.isArray(o.ord_delivery_data) ? o.ord_delivery_data : (o.ord_delivery_data ? [o.ord_delivery_data] : [])
+      const dl = dList.find((x) => x && (x.trackingNumber || deliveryCost(x))) || dList[0] || null
       rows.push({
         id: Number(o.id),
         order_time: normDate(o.orderTime),
@@ -193,6 +209,9 @@ Deno.serve(async (req) => {
         sajt: Number(o.sajt) || null,
         manager_id: Number(o.userId) || null,
         payment_method: pmRaw ? (payMethods[pmRaw] || pmRaw) : null,
+        ttn: dl?.trackingNumber ? String(dl.trackingNumber) : null,
+        delivery_cost: deliveryCost(dl),
+        delivery_json: dl,
         synced_at: new Date().toISOString(),
       })
       if (Number(o.userId)) mgrIds.add(Number(o.userId))
