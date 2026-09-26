@@ -226,6 +226,7 @@ drop function if exists stats_managers(date, date, text);
 drop function if exists stats_manager_daily(date, date, text);
 drop function if exists stats_daily(date, date, text, int);
 drop function if exists stats_managers(date, date, text, int);
+drop function if exists delivery_sample();
 
 -- Чи потрапляє замовлення в обраний магазин.
 -- p_store порожній = усі активні магазини (+ замовлення без сайту)
@@ -433,9 +434,9 @@ $$;
 
 -- Приклади даних доставки для перевірки (останні відмови з ТТН)
 create or replace function delivery_sample()
-returns table (id bigint, order_date date, status text, ttn text, delivery_cost numeric, delivery_json jsonb)
+returns table (id bigint, order_date date, status text, ttn text, delivery_cost numeric, delivery_json jsonb, sajt int)
 language sql stable as $$
-  select o.id, o.order_date, s.name, o.ttn, o.delivery_cost, o.delivery_json
+  select o.id, o.order_date, s.name, o.ttn, o.delivery_cost, o.delivery_json, o.sajt
   from orders o join statuses s on s.id = o.status_id
   where s.category in ('fail','return') and o.delivery_json is not null
   order by o.order_time desc limit 5

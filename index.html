@@ -530,7 +530,7 @@ function createDemoApi() {
       return group(list, (o) => fin(o, p_fin) + '|' + o.manager_id, (k) => ({ day: k.split('|')[0], manager_id: Number(k.split('|')[1]), sales: 0, upsell: 0 }), (x, o) => { x.sales++; x.upsell += o.upsell_amount; });
     },
     delivery_sample() {
-      return orders.filter((o) => ['fail', 'return'].includes(cat(o)) && o.ttn).slice(-5).reverse().map((o) => ({ id: o.id, order_date: o.order_date, status: statuses.find((x) => x.id === o.status_id)?.name, ttn: o.ttn, delivery_cost: o.delivery_cost, delivery_json: { trackingNumber: o.ttn, provider: 'novaposhta', cost: o.delivery_cost, statusCode: 102 } }));
+      return orders.filter((o) => ['fail', 'return'].includes(cat(o)) && o.ttn).slice(-5).reverse().map((o) => ({ id: o.id, order_date: o.order_date, status: statuses.find((x) => x.id === o.status_id)?.name, ttn: o.ttn, sajt: o.sajt, delivery_cost: o.delivery_cost, delivery_json: { trackingNumber: o.ttn, provider: 'novaposhta', cost: o.delivery_cost, statusCode: 102 } }));
     },
     stats_overview_meta() {
       return { orders: orders.length, first_order: orders[0]?.order_date, last_order: orders[orders.length - 1]?.order_time,
@@ -1195,6 +1195,7 @@ PAGES.stores = async (seq) => {
         <div class="stat-row"><span>ROMI</span><b>${T.romi == null ? '—' : `<span class="flag ${T.romi >= (tg.romi ?? 1) ? 'good' : T.romi >= 0 ? 'warn' : 'bad'}">${pct(T.romi, 0)}</span>`}</b></div>
         <div class="stat-row"><span>Ціна продажу</span><b>${uah(T.cpo)}</b></div>
         <div class="stat-row"><span>Відмови й повернення</span><b>${int(T.fail + T.returns)} <span class="muted small">${pct(T.refuseRate, 0)}</span></b></div>
+        <div class="stat-row"><span>Доставка відмов</span><b class="${T.return_costs ? 'neg' : ''}">${uah(T.return_costs)}</b></div>
         <div class="stat-row"><span>Інші витрати магазину</span><b>${uah(T.other)}</b></div>
       </div>
       <button class="btn sm" style="margin-top:12px" data-open="${r.st.id}">Відкрити огляд магазину</button>
@@ -1741,7 +1742,7 @@ PAGES.settings = async (seq) => {
       ${S.managers.length ? '<div style="margin-top:12px"><button class="btn primary" id="mgSave">Зберегти менеджерів</button></div>' : ''}</section>
 
     <section class="card c12"><div class="card-h"><div><h2 class="card-t">Вартість повернення посилок</h2><div class="card-s">Останні відмови з ТТН і яку вартість доставки вдалося взяти з SalesDrive. Якщо скрізь «не знайдено», надішліть скрін цього блоку.</div></div></div>
-      <div class="tw">${(dsample || []).length ? `<table class="t"><thead><tr><th>Замовлення</th><th>Статус</th><th>ТТН</th><th class="n">Вартість</th><th>Поля доставки з CRM</th></tr></thead><tbody>${dsample.map((d) => `<tr><td>#${d.id} <span class="muted small">${fdate(String(d.order_date).slice(0, 10))}</span></td><td>${esc(d.status)}</td><td class="small">${esc(d.ttn || '—')}</td>
+      <div class="tw">${(dsample || []).length ? `<table class="t"><thead><tr><th>Замовлення</th><th>Магазин</th><th>Статус</th><th>ТТН</th><th class="n">Вартість</th><th>Поля доставки з CRM</th></tr></thead><tbody>${dsample.map((d) => `<tr><td>#${d.id} <span class="muted small">${fdate(String(d.order_date).slice(0, 10))}</span></td><td>${d.sajt == null ? '—' : esc(storeLabel(d.sajt))}</td><td>${esc(d.status)}</td><td class="small">${esc(d.ttn || '—')}</td>
         <td class="n">${N(d.delivery_cost) ? `<b>${uah2(N(d.delivery_cost))}</b>` : '<span class="flag warn">не знайдено</span>'}</td>
         <td class="muted small" style="max-width:460px;word-break:break-all">${esc(Object.entries(d.delivery_json || {}).filter(([k, v]) => v !== null && v !== '' && typeof v !== 'object').map(([k, v]) => k + ': ' + v).join(', ')).slice(0, 400)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">Даних ще немає. Оновіть функцію синхронізації й перезавантажте період (див. інструкцію).</div>'}</div></section>
 
