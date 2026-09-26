@@ -204,6 +204,25 @@ insert into settings(key, value) values
   ('backfill_page',      '1')
 on conflict (key) do nothing;
 
+-- ФОПи: фіксовані податки 2-ї групи (віднімаються з прибутку свого магазину) і контроль річного ліміту
+-- sender_id — номер відправника в накладних SalesDrive (delivery_json.senderId)
+create table if not exists fops (
+  id            bigserial primary key,
+  name          text not null,
+  sender_id     text,
+  store_id      int,
+  single_tax    numeric(14,2) not null default 0,  -- єдиний податок на місяць
+  esv           numeric(14,2) not null default 0,  -- ЄСВ на місяць
+  military      numeric(14,2) not null default 0,  -- військовий збір на місяць
+  other         numeric(14,2) not null default 0,  -- інші щомісячні платежі
+  year_limit    numeric(14,2) not null default 0,  -- річний ліміт доходу
+  income_before numeric(14,2) not null default 0,  -- дохід з 1 січня до початку обліку в дашборді
+  active        boolean not null default true,
+  sort          int not null default 0,
+  created_by    text default (auth.jwt() ->> 'email'),
+  created_at    timestamptz not null default now()
+);
+
 -- =====================================================================
 -- Доступ: читати й змінювати дані можуть лише ті, хто увійшов у дашборд
 -- (користувачів створюєте в Supabase → Authentication → Users → Add user).
@@ -212,7 +231,7 @@ on conflict (key) do nothing;
 do $$
 declare t text;
 begin
-  foreach t in array array['orders','order_items','statuses','stores','managers','expenses','rules','settings','sync_log','people','payouts','wfp_transactions'] loop
+  foreach t in array array['orders','order_items','statuses','stores','managers','expenses','rules','settings','sync_log','people','payouts','wfp_transactions','fops'] loop
     execute format('alter table %I enable row level security', t);
     execute format('drop policy if exists "signed_in_all" on %I', t);
     execute format('create policy "signed_in_all" on %I for all to authenticated using (true) with check (true)', t);
@@ -227,7 +246,7 @@ do $$
 declare t text;
 begin
   if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
-    foreach t in array array['expenses','rules','stores','statuses','managers','settings','sync_log','people','payouts','wfp_transactions'] loop
+    foreach t in array array['expenses','rules','stores','statuses','managers','settings','sync_log','people','payouts','wfp_transactions','fops'] loop
       if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
         execute format('alter publication supabase_realtime add table public.%I', t);
       end if;
@@ -522,4 +541,34 @@ returns json language sql stable as $$
                select o.sajt id, count(*) orders, min(o.order_date) first_order, max(o.order_date) last_order
                from orders o group by o.sajt) x), '[]'::json)
   )
+$$;
+
+-- ---------- ФОП: відправники з накладних і дохід для контролю ліміту ----------
+-- Відправники, що трапляються в заявках (щоб зіставити номер із ФОПом)
+create or replace function fop_senders()
+returns table (sender text, cnt int, sample_id bigint, sajt int)
+language sql stable as $$
+  select delivery_json->>'senderId', count(*)::int, max(id), mode() within group (order by sajt)
+  from orders where delivery_json ? 'senderId' and delivery_json->>'senderId' is not null
+  group by 1 order by 2 desc
+$$;
+
+-- Отримані гроші за період:
+--   kind = 'cod' — виплачені замовлення (статус «успіх»), за датою продажу, мінус передоплата WayForPay, — на ФОП-відправника;
+--   kind = 'wfp' — успішні оплати WayForPay (повернені WayForPay позначає іншим статусом), за датою платежу (sender = null).
+create or replace function fop_income(p_from date, p_to date)
+returns table (sender text, kind text, amount numeric, cnt int)
+language sql stable as $$
+  with wfp as (
+    select order_id, sum(amount) paid
+    from wfp_transactions where status = 'Approved' and upper(coalesce(tx_type,'')) <> 'REFUND' and order_id is not null group by 1
+  )
+  select o.delivery_json->>'senderId', 'cod', sum(greatest(o.payment_amount - coalesce(w.paid, 0), 0)), count(*)::int
+  from orders o join statuses s on s.id = o.status_id left join wfp w on w.order_id = o.id
+  where s.category = 'success' and coalesce(o.payment_date, o.order_date) between p_from and p_to
+  group by 1
+  union all
+  select null, 'wfp', sum(amount), count(*)::int
+  from wfp_transactions
+  where status = 'Approved' and upper(coalesce(tx_type,'')) <> 'REFUND' and (tx_time at time zone 'Europe/Kyiv')::date between p_from and p_to
 $$;
