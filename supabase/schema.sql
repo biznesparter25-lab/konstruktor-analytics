@@ -201,6 +201,16 @@ language sql stable as $$
   end
 $$;
 
+-- Додаткові витрати замовлення (доставка, комісії тощо) БЕЗ собівартості.
+-- У SalesDrive поле «Витрати» (expensesAmount) уже включає собівартість товарів,
+-- тому беремо лише те, що понад собівартість. Якщо «Витрати» не заповнені —
+-- беремо окремо доставку й комісію.
+create or replace function order_extra(o orders) returns numeric
+language sql immutable as $$
+  select case when o.expenses_amount > 0 then greatest(o.expenses_amount - o.cost_price, 0)
+              else o.shipping_costs + o.commission end
+$$;
+
 -- Дата, за якою гроші відносяться до дня
 create or replace function fin_date(o orders, p_fin text) returns date
 language sql immutable as $$
@@ -232,8 +242,8 @@ language sql stable as $$
            count(*) filter (where s.category = 'success')::int sales,
            coalesce(sum(o.payment_amount) filter (where s.category = 'success'), 0) revenue,
            coalesce(sum(o.cost_price) filter (where s.category = 'success'), 0) cogs,
-           coalesce(sum(o.shipping_costs + o.commission + o.expenses_amount) filter (where s.category = 'success'), 0) order_costs,
-           coalesce(sum(o.shipping_costs + o.commission + o.expenses_amount) filter (where s.category = 'return'), 0) return_costs,
+           coalesce(sum(order_extra(o)) filter (where s.category = 'success'), 0) order_costs,
+           coalesce(sum(order_extra(o)) filter (where s.category = 'return'), 0) return_costs,
            coalesce(sum(o.payed_amount) filter (where s.category = 'success'), 0) payed,
            coalesce(sum(o.upsell_amount) filter (where s.category = 'success'), 0) upsell
     from orders o join statuses s on s.id = o.status_id
@@ -259,7 +269,7 @@ language sql stable as $$
     group by 1
   ), m as (
     select coalesce(o.utm_source,'') u, count(*)::int sales, sum(o.payment_amount) revenue,
-           sum(o.payment_amount - o.cost_price - o.shipping_costs - o.commission - o.expenses_amount) gross
+           sum(o.payment_amount - o.cost_price - order_extra(o)) gross
     from orders o join statuses s on s.id = o.status_id
     where in_scope(o.sajt, p_store) and fin_date(o, p_fin) between p_from and p_to and s.category = 'success'
     group by 1
@@ -351,7 +361,7 @@ language sql stable as $$
     group by 1
   ), m as (
     select o.manager_id m, count(*)::int sales, sum(o.payment_amount) revenue,
-           sum(o.payment_amount - o.cost_price - o.shipping_costs - o.commission - o.expenses_amount) gross,
+           sum(o.payment_amount - o.cost_price - order_extra(o)) gross,
            sum(o.upsell_amount) upsell
     from orders o join statuses s on s.id=o.status_id
     where in_scope(o.sajt, p_store) and s.category='success' and fin_date(o,p_fin) between p_from and p_to
