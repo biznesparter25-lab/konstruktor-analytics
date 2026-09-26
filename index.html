@@ -457,10 +457,10 @@ function createDemoApi() {
     stats_daily({ p_from, p_to, p_fin, p_store }) {
       const orders = scoped(p_store);
       const days = new Map();
-      const g = (d) => { if (!days.has(d)) days.set(d, { day: d, leads: 0, confirmed: 0, unconfirmed: 0, success: 0, fail: 0, returns: 0, work: 0, sales: 0, revenue: 0, cogs: 0, order_costs: 0, return_costs: 0, payed: 0, upsell: 0 }); return days.get(d); };
+      const g = (d) => { if (!days.has(d)) days.set(d, { day: d, leads: 0, confirmed: 0, unconfirmed: 0, success: 0, fail: 0, returns: 0, work: 0, sales: 0, revenue: 0, cogs: 0, order_costs: 0, return_costs: 0, payed: 0, upsell: 0, pend_sales: 0, pend_revenue: 0, pend_cogs: 0, pend_costs: 0 }); return days.get(d); };
       for (const o of orders) {
         const c = cat(o); if (c === 'ignore') continue;
-        if (inR(o.order_date, p_from, p_to)) { const x = g(o.order_date); x.leads++; x[c === 'return' ? 'returns' : c]++; if (conf(o)) x.confirmed++; else if (c === 'work') x.unconfirmed++; }
+        if (inR(o.order_date, p_from, p_to)) { const x = g(o.order_date); x.leads++; x[c === 'return' ? 'returns' : c]++; if (conf(o)) x.confirmed++; else if (c === 'work') x.unconfirmed++; if (c === 'work' && conf(o)) { x.pend_sales++; x.pend_revenue += o.payment_amount; x.pend_cogs += o.cost_price; x.pend_costs += o.shipping_costs + o.commission; } }
         const fd = fin(o, p_fin);
         if (inR(fd, p_from, p_to)) {
           if (c === 'success') { const x = g(fd); x.sales++; x.revenue += o.payment_amount; x.cogs += o.cost_price; x.order_costs += o.shipping_costs + o.commission + o.expenses_amount; x.payed += o.payed_amount; x.upsell += o.upsell_amount; }
@@ -705,7 +705,7 @@ const CHANNELS = [
 ];
 const channelOf = (u) => { if (!u) return 'Без мітки'; for (const [n, re] of CHANNELS) if (re.test(u)) return n; return u; };
 
-function emptyDay() { return { leads: 0, confirmed: 0, unconfirmed: 0, success: 0, fail: 0, returns: 0, work: 0, sales: 0, revenue: 0, cogs: 0, order_costs: 0, return_costs: 0, payed: 0, upsell: 0, ads: 0, other: 0, byCat: {}, adsByCh: {}, byRule: {} }; }
+function emptyDay() { return { pending: 0, leads: 0, confirmed: 0, unconfirmed: 0, success: 0, fail: 0, returns: 0, work: 0, sales: 0, revenue: 0, cogs: 0, order_costs: 0, return_costs: 0, payed: 0, upsell: 0, ads: 0, other: 0, byCat: {}, adsByCh: {}, byRule: {} }; }
 
 // Будує денний P&L: дані замовлень + ручні витрати + правила + з/п менеджерів
 function buildDays(from, to, daily, expenses, rules, mgrDaily, managers, settings, storeDays = {}) {
@@ -714,6 +714,8 @@ function buildDays(from, to, daily, expenses, rules, mgrDaily, managers, setting
   for (const r of daily) {
     const x = days[String(r.day).slice(0, 10)]; if (!x) continue;
     for (const k of ['leads', 'confirmed', 'unconfirmed', 'success', 'fail', 'returns', 'work', 'sales', 'revenue', 'cogs', 'order_costs', 'return_costs', 'payed', 'upsell']) x[k] += N(r[k]);
+    // Режим «виручка при підтвердженні»: підтверджені, ще не викуплені замовлення теж рахуються як продаж
+    if (settings.revenue_mode !== 'sale') { x.sales += N(r.pend_sales); x.revenue += N(r.pend_revenue); x.cogs += N(r.pend_cogs); x.order_costs += N(r.pend_costs); x.pending += N(r.pend_sales); }
   }
   const add = (x, cat, v) => { x.byCat[cat] = (x.byCat[cat] || 0) + v; };
   for (const e of expenses) {
@@ -1080,7 +1082,7 @@ PAGES.overview = async (seq) => {
   $('#page').innerHTML = `
   <div class="kpis">
     <div class="kpi hero"><div class="kpi-l"><span>Чистий прибуток</span>${delta(T.net, PT.net)}</div><div class="kpi-v ${T.net < 0 ? 'neg' : ''}">${uah(T.net)}</div><div class="kpi-s">Рентабельність ${pct(T.netMargin)} · після всіх витрат</div>${sparkSvg(daySer.map((x) => x.net))}</div>
-    ${kpi('Виручка', uah(T.revenue), `${int(T.sales)} продажів`, delta(T.revenue, PT.revenue))}
+    ${kpi('Виручка', uah(T.revenue), `${int(T.sales)} продажів${T.pending ? ` · з них ${int(T.pending)} ще в дорозі` : ''}`, delta(T.revenue, PT.revenue))}
     ${kpi('Валовий прибуток', uah(T.gross), `Маржа ${pct(T.grossMargin)}`, delta(T.gross, PT.gross))}
     ${kpi('Заявки', int(T.leads), `Не підтверджено ${int(T.unconfirmed)}`, delta(T.leads, PT.leads))}
     ${kpi('Конверсія в продаж', pct(T.conv), `Серед закритих ${pct(T.convClosed)} ${targetFlag(T.conv, tg.conversion)}`, delta(T.conv, PT.conv, { points: true }))}
@@ -1207,7 +1209,7 @@ PAGES.days = async (seq) => {
   <div class="kpis">
     ${kpi('Чистий прибуток', `<span class="${T.net < 0 ? 'neg' : ''}">${uah(T.net)}</span>`, `В середньому ${uah(T.net / Math.max(1, rows.length))} на день`, delta(T.net, D.PT.net))}
     ${kpi('Виручка', uah(T.revenue), `${uah(T.revenue / Math.max(1, rows.length))} на день`, delta(T.revenue, D.PT.revenue))}
-    ${kpi('Продажі', int(T.sales), `${(T.sales / Math.max(1, rows.length)).toFixed(1).replace('.', ',')} на день`, delta(T.sales, D.PT.sales))}
+    ${kpi('Продажі', int(T.sales), `${(T.sales / Math.max(1, rows.length)).toFixed(1).replace('.', ',')} на день${T.pending ? ` · ${int(T.pending)} ще в дорозі` : ''}`, delta(T.sales, D.PT.sales))}
     ${kpi('Заявки', int(T.leads), `${(T.leads / Math.max(1, rows.length)).toFixed(1).replace('.', ',')} на день · не підтв. ${int(T.unconfirmed)}`, delta(T.leads, D.PT.leads))}
     ${kpi('Реклама', uah(T.ads), `${uah(T.ads / Math.max(1, rows.length))} на день`, delta(T.ads, D.PT.ads, { invert: true }))}
     ${kpi('Підтверджені', int(T.confirmed), `${pct(T.confRate, 0)} заявок · ціна ${uah(T.cpc)}`, delta(T.confRate, D.PT.confRate, { points: true }))}
@@ -1558,6 +1560,9 @@ PAGES.settings = async (seq) => {
       <div style="margin-top:14px;font-size:12px;color:var(--ink-2);font-weight:500">Коли рахувати гроші від продажу</div>
       <label style="display:flex;gap:10px;margin:8px 0;align-items:flex-start"><input type="radio" name="fin" value="order" ${fin() === 'order' ? 'checked' : ''}><span><b>За датою заявки.</b> <span class="muted small">Замовлення від 30.09, викуплене 03.10, потрапить у вересень. Реклама і продажі порівнюються найточніше.</span></span></label>
       <label style="display:flex;gap:10px;margin:8px 0;align-items:flex-start"><input type="radio" name="fin" value="payment" ${fin() === 'payment' ? 'checked' : ''}><span><b>За датою продажу.</b> <span class="muted small">Гроші потрапляють у день, коли замовлення стало продажем у SalesDrive.</span></span></label>
+      <div style="margin-top:14px;font-size:12px;color:var(--ink-2);font-weight:500">Коли замовлення вважати продажем</div>
+      <label style="display:flex;gap:10px;margin:8px 0;align-items:flex-start"><input type="radio" name="rmode" value="confirmed" ${st.revenue_mode !== 'sale' ? 'checked' : ''}><span><b>Одразу після підтвердження.</b> <span class="muted small">Як в аналітиці одягу: підтверджене замовлення одразу йде у виручку й прибуток свого дня. Якщо потім буде відмова, воно перейде у відмови.</span></span></label>
+      <label style="display:flex;gap:10px;margin:8px 0;align-items:flex-start"><input type="radio" name="rmode" value="sale" ${st.revenue_mode === 'sale' ? 'checked' : ''}><span><b>Лише після викупу</b> (статус «Продаж»). <span class="muted small">Обережніше: гроші з'являються, коли клієнт забрав посилку.</span></span></label>
       <label style="display:flex;gap:10px;margin:12px 0 4px;align-items:center"><input type="checkbox" id="sMgr" ${st.managers_in_pnl !== false ? 'checked' : ''}><span>Віднімати зарплату менеджерів від прибутку</span></label>
       <div style="margin-top:14px;font-size:12px;color:var(--ink-2);font-weight:500">Цілі (підсвічуються зеленим або червоним)</div>
       <div class="form" style="grid-template-columns:1fr 1fr 1fr;margin-top:6px">
@@ -1603,7 +1608,7 @@ PAGES.settings = async (seq) => {
     const cats = split($('#sCats').value); if (!cats.includes('Реклама')) cats.unshift('Реклама');
     const upd = {
       store_name: $('#sName').value.trim() || 'Магазин конструкторів', usd_rate: numv('#sUsd') || 41.5, eur_rate: numv('#sEur') || 45,
-      finance_date: $('input[name=fin]:checked')?.value || 'order', managers_in_pnl: $('#sMgr').checked,
+      finance_date: $('input[name=fin]:checked')?.value || 'order', revenue_mode: $('input[name=rmode]:checked')?.value || 'confirmed', managers_in_pnl: $('#sMgr').checked,
       targets: { romi: numv('#tRomi') != null ? numv('#tRomi') / 100 : null, cpo: numv('#tCpo'), conversion: numv('#tConv') != null ? numv('#tConv') / 100 : null },
       expense_categories: cats, ad_channels: split($('#sChans').value),
     };
