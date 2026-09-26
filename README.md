@@ -1,1 +1,8 @@
-# konstruktor-analytics
+# Аналітика магазину конструкторів
+
+Дашборд продажів, реклами й прибутку на даних SalesDrive.
+
+- `index.html` — сам дашборд (сайт на GitHub Pages). Вхід за логіном і паролем Supabase.
+- `supabase/` — схема бази, функція синхронізації з SalesDrive і автозапуск.
+
+Секретні ключі (SalesDrive API, Supabase secret key) тут не зберігаються: вони лежать у секретах Supabase.

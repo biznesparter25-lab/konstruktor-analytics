@@ -1,0 +1,1643 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Аналітика конструкторів</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=Unbounded:wght@500;600&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f2f3f5;
+  --surface: #ffffff;
+  --surface-2: #f7f8fa;
+  --surface-3: #eef0f3;
+  --line: #e4e6eb;
+  --line-2: #d5d8de;
+  --ink: #111318;
+  --ink-2: #4b515c;
+  --ink-3: #858b96;
+  --brand: #ffc21a;
+  --brand-ink: #111318;
+  --brand-soft: #fff4d1;
+  --nav-bg: #111318;
+  --hero-bg: #111318;
+  --nav-ink: #a7adb8;
+  --nav-ink-strong: #ffffff;
+  --nav-hover: #1c1f26;
+  --s1: #2a78d6;
+  --s2: #eb6834;
+  --s3: #1baf7a;
+  --grid: #eceef1;
+  --good: #0e8a4a; --good-bg: #e5f5ec;
+  --bad: #cf3a2d;  --bad-bg: #fcebe9;
+  --warn: #a86b00; --warn-bg: #fdf2d9;
+  --bar: #9ec5f4;
+  --bar-neg: #f2b1aa;
+  --shadow: 0 1px 2px rgba(17,19,24,.04), 0 2px 8px rgba(17,19,24,.04);
+  --shadow-pop: 0 12px 32px rgba(17,19,24,.16), 0 2px 6px rgba(17,19,24,.08);
+  --r: 14px;
+  --r-sm: 9px;
+  --font: "Onest", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --display: "Unbounded", "Onest", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0d0e11; --surface: #16181d; --surface-2: #1b1e24; --surface-3: #22262d;
+    --line: #2a2e36; --line-2: #363b44;
+    --ink: #f4f5f7; --ink-2: #b6bcc6; --ink-3: #7d8490;
+    --brand-soft: #3a2f0c; --nav-bg: #0a0b0d; --hero-bg: #232833; --nav-hover: #16181d;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --grid: #22262d;
+    --good: #5bd08f; --good-bg: #13301f; --bad: #f28b80; --bad-bg: #3a1b18; --warn: #f1bd5b; --warn-bg: #372a10;
+    --bar: #256abf; --bar-neg: #9c3e36;
+    --shadow: 0 1px 2px rgba(0,0,0,.3); --shadow-pop: 0 12px 32px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0d0e11; --surface: #16181d; --surface-2: #1b1e24; --surface-3: #22262d;
+  --line: #2a2e36; --line-2: #363b44;
+  --ink: #f4f5f7; --ink-2: #b6bcc6; --ink-3: #7d8490;
+  --brand-soft: #3a2f0c; --nav-bg: #0a0b0d; --hero-bg: #232833; --nav-hover: #16181d;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --grid: #22262d;
+  --good: #5bd08f; --good-bg: #13301f; --bad: #f28b80; --bad-bg: #3a1b18; --warn: #f1bd5b; --warn-bg: #372a10;
+  --bar: #256abf; --bar-neg: #9c3e36;
+  --shadow: 0 1px 2px rgba(0,0,0,.3); --shadow-pop: 0 12px 32px rgba(0,0,0,.5);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.45 var(--font); -webkit-font-smoothing: antialiased; }
+button, input, select, textarea { font: inherit; color: inherit; }
+.tnum, td.n, th.n, .kpi-v, .val { font-variant-numeric: tabular-nums; }
+[hidden] { display: none !important; }
+:focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* ================= каркас ================= */
+.app { display: grid; grid-template-columns: 236px minmax(0, 1fr); min-height: 100%; }
+.side {
+  background: var(--nav-bg); color: var(--nav-ink); display: flex; flex-direction: column;
+  position: sticky; top: 0; height: 100vh; padding: 18px 12px 14px; gap: 4px;
+}
+.logo { display: flex; align-items: center; gap: 10px; padding: 2px 8px 18px; }
+.logo-mark { width: 34px; height: 34px; flex: none; }
+.logo-t { font-family: var(--display); font-weight: 600; font-size: 13.5px; color: var(--nav-ink-strong); letter-spacing: .01em; line-height: 1.15; }
+.logo-s { font-size: 11.5px; color: var(--nav-ink); margin-top: 2px; }
+.nav-g { font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: #6c727d; padding: 14px 10px 6px; }
+.nav a {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 9px; color: var(--nav-ink);
+  text-decoration: none; font-size: 13.5px; position: relative; cursor: pointer;
+}
+.nav a svg { width: 17px; height: 17px; flex: none; opacity: .85; }
+.nav a:hover { background: var(--nav-hover); color: var(--nav-ink-strong); }
+.nav a.on { background: #1f232b; color: var(--nav-ink-strong); font-weight: 550; }
+.nav a.on::before { content: ""; position: absolute; left: -12px; top: 8px; bottom: 8px; width: 4px; border-radius: 0 4px 4px 0; background: var(--brand); }
+.side-foot { margin-top: auto; display: flex; flex-direction: column; gap: 8px; padding: 10px 6px 0; border-top: 1px solid #22262d; }
+.sync-pill { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--nav-ink); padding: 4px 4px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #3dbb74; flex: none; box-shadow: 0 0 0 3px rgba(61,187,116,.18); }
+.dot.warn { background: #f1bd5b; box-shadow: 0 0 0 3px rgba(241,189,91,.18); }
+.dot.bad { background: #f28b80; box-shadow: 0 0 0 3px rgba(242,139,128,.18); }
+.dot.spin { animation: pulse 1s infinite alternate; }
+@keyframes pulse { to { opacity: .35; } }
+.side-btn { display: flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 9px; padding: 9px 12px; background: var(--brand); color: var(--brand-ink); font-weight: 600; cursor: pointer; font-size: 13px; }
+.side-btn svg { width: 16px; height: 16px; flex: none; }
+.side-btn:hover { filter: brightness(1.05); }
+.side-btn:disabled { opacity: .6; cursor: default; }
+.side-user { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #6c727d; padding: 2px 4px; gap: 6px; }
+.side-user button { background: none; border: 0; color: var(--nav-ink); cursor: pointer; padding: 2px 4px; font-size: 12px; }
+.side-user span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.main { min-width: 0; padding: 22px 28px 60px; }
+.topbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+.page-t { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spacing: -.01em; margin: 0; text-wrap: balance; }
+.page-s { color: var(--ink-3); font-size: 13px; margin-top: 4px; }
+.tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.demo-bar { background: var(--brand-soft); color: var(--ink); border: 1px solid color-mix(in srgb, var(--brand) 55%, transparent); border-radius: 12px; padding: 9px 14px; font-size: 13px; margin-bottom: 16px; display: flex; gap: 10px; align-items: center; }
+.demo-bar b { font-weight: 650; }
+
+/* ================= кнопки й поля ================= */
+.btn { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line-2); background: var(--surface); border-radius: var(--r-sm); padding: 7px 12px; cursor: pointer; font-size: 13px; min-height: 36px; white-space: nowrap; }
+.btn:hover { background: var(--surface-2); }
+.btn svg { width: 16px; height: 16px; }
+.btn.primary { background: var(--ink); color: var(--surface); border-color: var(--ink); font-weight: 600; }
+.btn.primary:hover { opacity: .9; }
+.btn.yellow { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); font-weight: 600; }
+.btn.ghost { border-color: transparent; background: transparent; }
+.btn.danger { color: var(--bad); }
+.btn.sm { min-height: 30px; padding: 4px 10px; font-size: 12.5px; }
+.icon-btn { border: 0; background: none; color: var(--ink-3); cursor: pointer; width: 30px; height: 30px; border-radius: 8px; display: inline-grid; place-items: center; }
+.icon-btn:hover { background: var(--surface-3); color: var(--ink); }
+.icon-btn svg { width: 16px; height: 16px; }
+input[type=text], input[type=number], input[type=date], input[type=month], input[type=email], input[type=password], select, textarea {
+  background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 7px 10px; min-height: 36px; width: 100%;
+}
+input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb, var(--s1) 45%, transparent); border-color: var(--s1); }
+label.f { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--ink-2); font-weight: 500; min-width: 0; }
+.form { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); align-items: end; }
+.form .wide { grid-column: span 2; }
+.seg { display: inline-flex; background: var(--surface-3); border-radius: 10px; padding: 3px; gap: 2px; }
+.seg button { border: 0; background: none; padding: 5px 11px; border-radius: 8px; cursor: pointer; color: var(--ink-2); font-size: 12.5px; white-space: nowrap; }
+.seg button.on { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); font-weight: 550; }
+
+/* період */
+.period { position: relative; }
+.period-btn { min-width: 220px; justify-content: space-between; }
+.period-btn .lbl { font-weight: 600; }
+.period-btn .rng { color: var(--ink-3); font-size: 12px; }
+.pop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow-pop); width: 280px; padding: 6px; }
+.pop button.row { display: flex; width: 100%; justify-content: space-between; align-items: center; border: 0; background: none; padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size: 13px; text-align: left; }
+.pop button.row:hover { background: var(--surface-2); }
+.pop button.row.on { font-weight: 650; }
+.pop button.row .ck { width: 16px; height: 16px; opacity: 0; }
+.pop button.row.on .ck { opacity: 1; }
+.pop .custom { border-top: 1px solid var(--line); margin-top: 6px; padding: 10px 6px 4px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pop .custom .btn { grid-column: span 2; justify-content: center; }
+
+/* ================= картки ================= */
+.grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px; }
+.c12 { grid-column: span 12; } .c8 { grid-column: span 8; } .c7 { grid-column: span 7; } .c6 { grid-column: span 6; } .c5 { grid-column: span 5; } .c4 { grid-column: span 4; } .c3 { grid-column: span 3; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px 18px; box-shadow: var(--shadow); min-width: 0; }
+.card-h { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+.card-t { font-weight: 650; font-size: 14.5px; margin: 0; }
+.card-s { color: var(--ink-3); font-size: 12.5px; margin-top: 2px; }
+.muted { color: var(--ink-3); }
+.small { font-size: 12.5px; }
+.neg { color: var(--bad); }
+.pos { color: var(--good); }
+.loading-veil { transition: opacity .2s; }
+.is-loading .loading-veil { opacity: .5; pointer-events: none; }
+
+/* KPI */
+.kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+.kpi { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 13px 15px 12px; box-shadow: var(--shadow); min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.kpi-l { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 4px 6px; color: var(--ink-2); font-size: 12.5px; }
+.kpi-v { font-size: 21px; font-weight: 700; letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi-s { color: var(--ink-3); font-size: 12px; }
+.kpi.hero { grid-column: span 2; background: var(--hero-bg); color: #fff; border-color: var(--hero-bg); position: relative; overflow: hidden; }
+.kpi.hero .kpi-l, .kpi.hero .kpi-s { color: rgba(255,255,255,.7); }
+.kpi.hero .kpi-v { font-family: var(--display); font-weight: 600; font-size: 28px; letter-spacing: -.02em; }
+.kpi.hero .kpi-v.neg { color: #ff9b90; }
+.kpi.hero .spark { display: block; width: 100%; height: 38px; margin-top: 8px; }
+.kpi.hero .studs { position: absolute; right: 14px; top: 14px; display: grid; grid-template-columns: repeat(2, 9px); gap: 5px; }
+.kpi.hero .studs i { width: 9px; height: 9px; border-radius: 50%; background: var(--brand); display: block; }
+.delta { font-size: 11.5px; font-weight: 650; padding: 1px 7px; border-radius: 999px; white-space: nowrap; flex: none; line-height: 18px; }
+.delta.up { color: var(--good); background: var(--good-bg); }
+.delta.down { color: var(--bad); background: var(--bad-bg); }
+.delta.flat { color: var(--ink-3); background: var(--surface-3); }
+.kpi.hero .delta { background: rgba(255,255,255,.12); color: #fff; }
+.kpi .target { font-size: 11.5px; }
+.flag { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 600; padding: 0 7px; border-radius: 999px; line-height: 18px; }
+.flag.good { color: var(--good); background: var(--good-bg); }
+.flag.bad { color: var(--bad); background: var(--bad-bg); }
+.flag.warn { color: var(--warn); background: var(--warn-bg); }
+
+/* графіки */
+.chart { position: relative; height: 290px; }
+.chart.sm { height: 220px; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12.5px; color: var(--ink-2); }
+.legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+.legend i.box { width: 10px; height: 10px; border-radius: 3px; }
+
+/* P&L */
+.pl { width: 100%; border-collapse: collapse; }
+.pl td { padding: 7px 0; border-bottom: 1px solid var(--grid); vertical-align: middle; font-size: 13px; }
+.pl tr:last-child td { border-bottom: 0; }
+.pl td.n { text-align: right; white-space: nowrap; padding-left: 10px; }
+.pl td.p { text-align: right; color: var(--ink-3); width: 44px; font-size: 12px; }
+.pl .bc { width: 30%; padding-left: 12px; }
+.pl .b { height: 8px; border-radius: 4px; background: var(--bar); min-width: 2px; }
+.pl .b.neg { background: var(--bar-neg); }
+.pl tr.tot td { font-weight: 700; }
+.pl tr.tot.final td { border-top: 2px solid var(--ink); font-size: 14px; }
+.pl tr.sub td:first-child { padding-left: 14px; color: var(--ink-2); }
+
+/* таблиці */
+.tw { overflow-x: auto; margin: 0 -6px; }
+table.t { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.t th { text-align: left; font-weight: 600; color: var(--ink-3); font-size: 11.5px; letter-spacing: .02em; padding: 8px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; background: var(--surface); position: sticky; top: 0; }
+table.t th.sort { cursor: pointer; user-select: none; }
+table.t th.sort:hover { color: var(--ink); }
+table.t th.sorted { color: var(--ink); }
+table.t td { padding: 8px 8px; border-bottom: 1px solid var(--grid); }
+table.t td.n, table.t th.n { text-align: right; white-space: nowrap; }
+table.t tbody tr:hover td { background: var(--surface-2); }
+table.t tfoot td { font-weight: 700; border-top: 1px solid var(--line-2); border-bottom: 0; background: var(--surface-2); }
+table.t .name { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tbl-scroll { max-height: 560px; overflow: auto; }
+.pill { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 12px; font-weight: 550; white-space: nowrap; }
+.pill.success { background: var(--good-bg); color: var(--good); }
+.pill.fail, .pill.return { background: var(--bad-bg); color: var(--bad); }
+.pill.work { background: var(--surface-3); color: var(--ink-2); }
+.pill.ignore { background: var(--surface-3); color: var(--ink-3); text-decoration: line-through; }
+.minibar { height: 6px; border-radius: 3px; background: var(--surface-3); overflow: hidden; min-width: 60px; }
+.minibar i { display: block; height: 100%; background: var(--s1); border-radius: 3px; }
+
+.hb { display: grid; grid-template-columns: minmax(100px, 40%) 1fr auto; gap: 10px; align-items: center; padding: 6px 0; font-size: 13px; }
+.hb .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
+.hb .tr { height: 10px; border-radius: 5px; background: var(--surface-3); overflow: hidden; display: flex; gap: 2px; }
+.hb .fl { height: 100%; background: var(--s1); border-radius: 5px; }
+.hb .fl.s2 { background: var(--s2); }
+.hb .val { text-align: right; white-space: nowrap; }
+
+/* воронка */
+.funnel { display: flex; flex-direction: column; gap: 8px; }
+.fstep { display: grid; grid-template-columns: 120px 1fr 90px; gap: 10px; align-items: center; font-size: 13px; }
+.fstep .fb { height: 26px; border-radius: 7px; background: var(--s1); display: flex; align-items: center; padding: 0 8px; color: #fff; font-weight: 600; font-size: 12px; min-width: 34px; }
+.fstep .fb.s2 { background: var(--s3); }
+.fstep .fb.s4 { background: var(--brand); color: var(--brand-ink); }
+.warn-t { color: var(--warn); font-weight: 600; }
+.fstep .fb.s3 { background: var(--bar-neg); color: var(--ink); }
+
+.stat-list { display: flex; flex-direction: column; }
+.stat-row { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--grid); font-size: 13px; }
+.stat-row:last-child { border-bottom: 0; }
+.stat-row b { font-weight: 650; }
+
+/* менеджери */
+.mgr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.mgr-card .ava { width: 38px; height: 38px; border-radius: 11px; background: var(--brand); color: var(--brand-ink); display: grid; place-items: center; font-family: var(--display); font-weight: 600; }
+.mgr-pay { font-family: var(--display); font-size: 22px; font-weight: 600; margin: 10px 0 6px; }
+
+.hint { background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; color: var(--ink-2); font-size: 13px; }
+.hint.warn { background: var(--warn-bg); border-color: transparent; color: var(--warn); }
+.empty { text-align: center; color: var(--ink-3); padding: 28px 10px; font-size: 13px; }
+.toast { position: fixed; left: 50%; bottom: 22px; transform: translate(-50%, 20px); background: var(--ink); color: var(--surface); padding: 10px 16px; border-radius: 10px; font-size: 13px; opacity: 0; pointer-events: none; transition: all .2s; z-index: 100; max-width: calc(100vw - 32px); }
+.toast.on { opacity: 1; transform: translate(-50%, 0); }
+.toast.err { background: var(--bad); color: #fff; }
+.tip { position: fixed; z-index: 90; pointer-events: none; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-pop); border-radius: 8px; padding: 6px 10px; font-size: 12.5px; display: none; max-width: 280px; }
+.modal-bg { position: fixed; inset: 0; background: rgba(10,11,13,.45); display: grid; place-items: center; z-index: 80; padding: 16px; }
+.modal { background: var(--surface); border-radius: 16px; box-shadow: var(--shadow-pop); padding: 20px; width: 100%; max-width: 380px; }
+.modal h3 { margin: 0 0 6px; font-size: 16px; }
+.modal p { margin: 0 0 16px; color: var(--ink-2); font-size: 13.5px; }
+.modal .acts { display: flex; justify-content: flex-end; gap: 8px; }
+.progress { height: 6px; background: var(--surface-3); border-radius: 3px; overflow: hidden; }
+.progress i { display: block; height: 100%; background: var(--brand); width: 0; transition: width .3s; }
+
+/* вхід */
+.login { min-height: 100%; display: grid; place-items: center; padding: 24px 16px; background: var(--nav-bg); }
+.login form { width: 100%; max-width: 360px; background: var(--surface); border-radius: 18px; padding: 26px; display: flex; flex-direction: column; gap: 12px; box-shadow: var(--shadow-pop); }
+.login h1 { font-family: var(--display); font-size: 19px; margin: 6px 0 0; font-weight: 600; }
+.login .err { color: var(--bad); font-size: 13px; min-height: 18px; }
+
+/* ================= адаптив ================= */
+@media (max-width: 1280px) { .kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 1100px) {
+  .c8, .c7, .c6, .c5, .c4 { grid-column: span 12; }
+  .c3 { grid-column: span 6; }
+}
+@media (max-width: 860px) {
+  .app { grid-template-columns: 1fr; }
+  .side { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 40; height: auto; flex-direction: row; align-items: center; padding: 8px 12px; gap: 6px; overflow-x: auto; }
+  .logo { padding: 0 8px 0 0; }
+  .logo-t, .logo-s, .nav-g, .side-user, .sync-pill span { display: none; }
+  .nav { display: flex; gap: 2px; }
+  .nav a { padding: 7px 9px; white-space: nowrap; font-size: 13px; }
+  .nav a.on::before { display: none; }
+  .side-foot { margin: 0 0 0 auto; flex-direction: row; border: 0; padding: 0; }
+  .side-btn span { display: none; }
+  .main { padding: 16px 16px 50px; }
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpi.hero { grid-column: 1 / -1; }
+  .c3 { grid-column: span 12; }
+  .period-btn { min-width: 0; }
+  .pl .bc, .pl td.p { display: none; }
+  .form .wide { grid-column: auto; }
+}
+
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="tip" id="tip"></div>
+<script>
+// ===================== ДЕМО-ДАНІ =====================
+// Працює, коли в CONFIG не вказано Supabase. Імітує ту саму базу й SQL-функції.
+function createDemoApi() {
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296);
+  const pick = (a) => a[Math.floor(rnd() * a.length)];
+  const w = (pairs) => { let x = rnd() * pairs.reduce((s, p) => s + p[1], 0); for (const [v, k] of pairs) if ((x -= k) < 0) return v; return pairs[0][0]; };
+  const pad = (n) => String(n).padStart(2, '0');
+  const ymdL = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+  const PRODUCTS = [
+    ['Конструктор «Пожежна станція» 820 дет.', 1890], ['Конструктор «Космічний шатл» 1100 дет.', 2650], ['Конструктор «Замок лицаря» 950 дет.', 2190],
+    ['Конструктор «Гоночне авто» 420 дет.', 890], ['Конструктор «Динозавр T-Rex» 380 дет.', 790], ['Конструктор «Поліцейська дільниця» 700 дет.', 1590],
+    ['Конструктор «Ферма» 310 дет.', 690], ['Конструктор «Робот-трансформер» 560 дет.', 1190], ['Магнітний конструктор 64 дет.', 1290],
+    ['Магнітний конструктор 120 дет.', 2190], ["Дерев'яний конструктор «Місто» 150 дет.", 990], ['Конструктор для малюків 48 дет.', 490],
+    ['Технічний конструктор «Екскаватор» 1300 дет.', 3490], ['Технічний конструктор «Кран» 1800 дет.', 4290], ['Конструктор «Піратський корабель» 1250 дет.', 2890],
+    ["Конструктор «Кав'ярня» 520 дет.", 1090], ['Набір мініфігурок 12 шт.', 390], ['Електронний конструктор «Юний інженер»', 1690],
+    ['Конструктор «Вантажівка-сміттєвоз» 610 дет.', 1390], ['Конструктор «Аеропорт» 1450 дет.', 3190],
+  ];
+  const REASONS = ['Не відповідає на дзвінки', 'Передумав', 'Дорога доставка', 'Знайшов дешевше', 'Не забрав з пошти', 'Товар не сподобався'];
+  const statuses = [
+    { id: 1, name: 'Новий', type: 1, category: 'work', confirmed: false, manual: false, sort: 0 },
+    { id: 2, name: 'Підтверджено', type: 1, category: 'work', confirmed: true, manual: false, sort: 1 },
+    { id: 3, name: 'Відправлено', type: 1, category: 'work', confirmed: true, manual: false, sort: 2 },
+    { id: 4, name: 'Продаж', type: 2, category: 'success', confirmed: true, manual: false, sort: 3 },
+    { id: 5, name: 'Відмова', type: 3, category: 'fail', confirmed: false, manual: false, sort: 4 },
+    { id: 6, name: 'Повернення', type: 3, category: 'return', confirmed: false, manual: false, sort: 5 },
+    { id: 7, name: 'Дубль / видалено', type: 4, category: 'ignore', confirmed: false, manual: false, sort: 6 },
+  ];
+  const managers = [
+    { id: 3, name: 'Олена', rate_per_order: 18, upsell_pct: 0.2, active: true },
+    { id: 4, name: 'Максим', rate_per_order: 18, upsell_pct: 0.2, active: true },
+    { id: 5, name: 'Ірина', rate_per_order: 16, upsell_pct: 0.25, active: true },
+  ];
+  const stores = [
+    { id: 21, name: 'BrickLand', active: true, sort: 0 },
+    { id: 22, name: 'Кубик', active: true, sort: 1 },
+  ];
+  const orders = [], items = [];
+  const today = new Date(); today.setHours(12, 0, 0, 0);
+  const start = new Date(today); start.setDate(start.getDate() - 420);
+  let id = 50000;
+  for (let d = new Date(start); d <= today; d.setDate(d.getDate() + 1)) {
+    const age = Math.round((today - d) / 86400e3);
+    const m = d.getMonth();
+    const season = 1 + 0.3 * Math.cos((m - 11) / 12 * 2 * Math.PI) + (m === 11 ? 0.45 : 0) + (m === 8 ? 0.15 : 0);
+    const growth = 0.75 + 0.35 * (1 - age / 420);
+    const n = Math.round((10 + rnd() * 9) * season * growth * ([0, 6].includes(d.getDay()) ? 1.2 : 1));
+    for (let k = 0; k < n; k++) {
+      id++;
+      const sajt = rnd() < 0.62 ? 21 : 22;
+      const src = sajt === 21 ? w([['facebook', 26], ['instagram', 18], ['google', 30], ['sms', 6], [null, 20]]) : w([['facebook', 22], ['instagram', 20], ['tiktok', 40], [null, 18]]);
+      const cnt = w([[1, 68], [2, 23], [3, 9]]);
+      const its = [];
+      for (let j = 0; j < cnt; j++) {
+        const pi = Math.floor(rnd() * PRODUCTS.length);
+        const [name, price] = PRODUCTS[pi];
+        its.push({ pi, name, price, qty: rnd() < 0.08 ? 2 : 1, cost: Math.round(price * (0.54 + rnd() * 0.12)), pre: j > 0 && rnd() < 0.5 });
+      }
+      const amount = its.reduce((s, i) => s + i.price * i.qty, 0);
+      const cost = its.reduce((s, i) => s + i.cost * i.qty, 0);
+      const cod = rnd() < 0.6;
+      let st;
+      if (age > 14) st = w([[4, 70], [5, 15], [6, 10], [7, 5]]);
+      else if (age > 5) st = w([[4, 42], [3, 32], [5, 12], [6, 4], [7, 4], [2, 6]]);
+      else st = w([[1, 22], [2, 30], [3, 30], [4, 6], [5, 8], [7, 4]]);
+      const ship = amount >= 1500 ? 70 + Math.round(rnd() * 45) : 0;
+      const comm = cod ? Math.round(amount * 0.02 + 20) : Math.round(amount * 0.013);
+      const pd = new Date(d); pd.setDate(pd.getDate() + 2 + Math.floor(rnd() * 4));
+      const sale = st === 4;
+      const payed = sale ? (rnd() < 0.97 ? amount : 0) : (!cod && st === 3 ? amount : 0);
+      const upsell = its.filter((i) => i.pre).reduce((s, i) => s + i.price * i.qty, 0);
+      orders.push({
+        id, order_date: ymdL(d), order_time: `${ymdL(d)} ${pad(8 + Math.floor(rnd() * 14))}:${pad(Math.floor(rnd() * 60))}:00`,
+        payment_date: sale ? (pd > today ? ymdL(today) : ymdL(pd)) : null, status_id: st,
+        payment_amount: amount, cost_price: cost, shipping_costs: st === 6 ? ship + 110 : (sale ? ship : 0), commission: sale ? comm : 0, expenses_amount: 0,
+        payed_amount: payed, rest_pay: (sale || st === 3) ? amount - payed : 0, upsell_amount: upsell,
+        rejection_reason: st === 5 || st === 6 ? pick(REASONS) : null, utm_source: src,
+        sajt, manager_id: sajt === 21 ? w([[3, 60], [4, 40]]) : w([[4, 30], [5, 70]]), payment_method: cod ? 'Накладений платіж' : pick(['Оплата на картку', 'LiqPay', 'Monobank']),
+      });
+      its.forEach((i, pos) => items.push({ order_id: id, pos, product_id: i.pi + 1, name: i.name, sku: 'KB-' + (100 + i.pi), amount: i.qty, price: i.price, cost_price: i.cost }));
+    }
+  }
+  const byId = new Map(orders.map((o) => [o.id, o]));
+  const cat = (o) => statuses.find((s) => s.id === o.status_id)?.category || 'work';
+  const conf = (o) => !!statuses.find((s) => s.id === o.status_id)?.confirmed;
+
+  // Витрати: реклама щотижня (Meta в $), SMS щомісяця, блогери
+  const expenses = []; let eid = 1;
+  const settings = {
+    finance_date: 'order', usd_rate: 41.5, eur_rate: 45, store_name: 'Магазин конструкторів',
+    expense_categories: ['Реклама', 'Податки', 'SMS-розсилки', 'Зарплата', 'Оренда / склад', 'Пакування', 'Сервіси (CRM, сайт)', 'Банк / еквайринг', 'Інше'],
+    ad_channels: ['Meta', 'Google', 'TikTok', 'Блогери', 'Розсилки', 'Інше'],
+    targets: { romi: 1.0, cpo: 300, conversion: 0.6 }, managers_in_pnl: true,
+    backfill_done: true, last_sync: new Date(Date.now() - 6 * 60e3).toISOString(), last_run: new Date(Date.now() - 6 * 60e3).toISOString(),
+  };
+  const addExp = (date, date_to, category, channel, amount, currency, comment, store_id = null) => {
+    const rate = currency === 'USD' ? 41.5 : 1;
+    expenses.push({ id: eid++, date, date_to, category, channel, amount, currency, rate, amount_uah: Math.round(amount * rate * 100) / 100, comment, store_id, created_at: date });
+  };
+  for (let d = new Date(start); d <= today; d.setDate(d.getDate() + 7)) {
+    const e = new Date(d); e.setDate(e.getDate() + 6);
+    const to = e > today ? ymdL(today) : ymdL(e);
+    addExp(ymdL(d), to, 'Реклама', 'Meta', Math.round(140 + rnd() * 60), 'USD', 'Facebook + Instagram', 21);
+    addExp(ymdL(d), to, 'Реклама', 'Google', Math.round(6000 + rnd() * 3000), 'UAH', 'Google Ads', 21);
+    addExp(ymdL(d), to, 'Реклама', 'Meta', Math.round(80 + rnd() * 40), 'USD', 'Facebook + Instagram', 22);
+    addExp(ymdL(d), to, 'Реклама', 'TikTok', Math.round(90 + rnd() * 60), 'USD', 'TikTok Ads', 22);
+  }
+  for (let mm = new Date(start.getFullYear(), start.getMonth(), 1); mm <= today; mm.setMonth(mm.getMonth() + 1)) {
+    const last = new Date(mm.getFullYear(), mm.getMonth() + 1, 0);
+    addExp(ymdL(mm), ymdL(last), 'SMS-розсилки', null, Math.round(1600 + rnd() * 900), 'UAH', 'Розсилка по базі');
+    addExp(ymdL(new Date(mm.getFullYear(), mm.getMonth(), 12)), null, 'Реклама', 'Блогери', Math.round(4000 + rnd() * 5000), 'UAH', 'Інтеграція у блогера', 21);
+    addExp(ymdL(mm), ymdL(last), 'Оренда / склад', null, 6000, 'UAH', 'Склад', null);
+  }
+  const rules = [
+    { id: 1, name: 'Єдиний податок 5%', kind: 'percent_revenue', value: 5, category: 'Податки', date_from: null, date_to: null, store_id: null, active: true },
+    { id: 2, name: 'ЄСВ за ФОП', kind: 'fixed_monthly', value: 1902.34, category: 'Податки', date_from: null, date_to: null, store_id: null, active: true },
+    { id: 3, name: 'SalesDrive + сайт', kind: 'fixed_monthly', value: 2400, category: 'Сервіси (CRM, сайт)', date_from: null, date_to: null, store_id: null, active: true },
+    { id: 4, name: 'Пакування (коробка, скотч)', kind: 'per_order', value: 14, category: 'Пакування', date_from: null, date_to: null, store_id: null, active: true },
+  ];
+  let rid = 5;
+  const syncLog = [
+    { id: 3, at: new Date(Date.now() - 6 * 60e3).toISOString(), mode: 'cron', orders: 12, pages: 1, ok: true, message: 'Оновлено замовлень: 12' },
+    { id: 2, at: new Date(Date.now() - 21 * 60e3).toISOString(), mode: 'cron', orders: 9, pages: 1, ok: true, message: 'Оновлено замовлень: 9' },
+    { id: 1, at: new Date(Date.now() - 36 * 60e3).toISOString(), mode: 'cron', orders: 15, pages: 1, ok: true, message: 'Оновлено замовлень: 15' },
+  ];
+
+  const inScope = (o, st) => (st != null ? o.sajt === st : (o.sajt == null || stores.find((x) => x.id === o.sajt)?.active !== false));
+  const scoped = (st) => orders.filter((o) => inScope(o, st));
+  const fin = (o, f) => (f === 'payment' ? (o.payment_date || o.order_date) : o.order_date);
+  const inR = (d, a, b) => d >= a && d <= b;
+  const group = (list, keyFn, init, add) => { const m = new Map(); for (const x of list) { const k = keyFn(x); if (!m.has(k)) m.set(k, init(k)); add(m.get(k), x); } return [...m.values()]; };
+  const R = {
+    stats_daily({ p_from, p_to, p_fin, p_store }) {
+      const orders = scoped(p_store);
+      const days = new Map();
+      const g = (d) => { if (!days.has(d)) days.set(d, { day: d, leads: 0, confirmed: 0, unconfirmed: 0, success: 0, fail: 0, returns: 0, work: 0, sales: 0, revenue: 0, cogs: 0, order_costs: 0, return_costs: 0, payed: 0, upsell: 0 }); return days.get(d); };
+      for (const o of orders) {
+        const c = cat(o); if (c === 'ignore') continue;
+        if (inR(o.order_date, p_from, p_to)) { const x = g(o.order_date); x.leads++; x[c === 'return' ? 'returns' : c]++; if (conf(o)) x.confirmed++; else if (c === 'work') x.unconfirmed++; }
+        const fd = fin(o, p_fin);
+        if (inR(fd, p_from, p_to)) {
+          if (c === 'success') { const x = g(fd); x.sales++; x.revenue += o.payment_amount; x.cogs += o.cost_price; x.order_costs += o.shipping_costs + o.commission + o.expenses_amount; x.payed += o.payed_amount; x.upsell += o.upsell_amount; }
+          if (c === 'return') g(fd).return_costs += o.shipping_costs + o.commission + o.expenses_amount;
+        }
+      }
+      return [...days.values()].sort((a, b) => a.day.localeCompare(b.day));
+    },
+    stats_channels({ p_from, p_to, p_fin, p_store }) {
+      const orders = scoped(p_store);
+      const m = new Map(); const g = (u) => { u = u || ''; if (!m.has(u)) m.set(u, { utm_source: u, leads: 0, sales: 0, revenue: 0, gross: 0 }); return m.get(u); };
+      for (const o of orders) {
+        const c = cat(o); if (c === 'ignore') continue;
+        if (inR(o.order_date, p_from, p_to)) g(o.utm_source).leads++;
+        if (c === 'success' && inR(fin(o, p_fin), p_from, p_to)) { const x = g(o.utm_source); x.sales++; x.revenue += o.payment_amount; x.gross += o.payment_amount - o.cost_price - o.shipping_costs - o.commission - o.expenses_amount; }
+      }
+      return [...m.values()];
+    },
+    stats_products({ p_from, p_to, p_fin, p_store }) {
+      const m = new Map();
+      for (const i of items) {
+        const o = byId.get(i.order_id); if (!inScope(o, p_store)) continue; const c = cat(o);
+        if (!['success', 'fail', 'return'].includes(c)) continue;
+        if (!inR(c === 'success' ? fin(o, p_fin) : o.order_date, p_from, p_to)) continue;
+        if (!m.has(i.product_id)) m.set(i.product_id, { product_id: i.product_id, name: i.name, sku: i.sku, sold: 0, refused: 0, returned: 0, revenue: 0, cost: 0, profit: 0 });
+        const x = m.get(i.product_id);
+        if (c === 'success') { x.sold += i.amount; x.revenue += i.price * i.amount; x.cost += i.cost_price * i.amount; x.profit += (i.price - i.cost_price) * i.amount; }
+        else if (c === 'fail') x.refused += i.amount; else x.returned += i.amount;
+      }
+      return [...m.values()].sort((a, b) => b.profit - a.profit);
+    },
+    stats_statuses({ p_from, p_to, p_store }) {
+      const list = scoped(p_store).filter((o) => inR(o.order_date, p_from, p_to) && cat(o) !== 'ignore');
+      return group(list, (o) => o.status_id, (k) => { const s = statuses.find((x) => x.id === k); return { status_id: k, name: s?.name || 'Статус #' + k, category: s?.category || 'work', cnt: 0, amount: 0, sort: s?.sort || 0 }; }, (x, o) => { x.cnt++; x.amount += o.payment_amount; })
+        .sort((a, b) => a.sort - b.sort);
+    },
+    stats_reasons({ p_from, p_to, p_store }) {
+      const list = scoped(p_store).filter((o) => inR(o.order_date, p_from, p_to) && ['fail', 'return'].includes(cat(o)));
+      return group(list, (o) => o.rejection_reason || '—', (k) => ({ reason: k, fail: 0, returns: 0 }), (x, o) => { if (cat(o) === 'fail') x.fail++; else x.returns++; })
+        .sort((a, b) => (b.fail + b.returns) - (a.fail + a.returns));
+    },
+    stats_payments({ p_from, p_to, p_fin, p_store }) {
+      const orders = scoped(p_store);
+      const s = orders.filter((o) => cat(o) === 'success' && inR(fin(o, p_fin), p_from, p_to));
+      const back = new Date(p_to + 'T00:00:00Z'); back.setUTCDate(back.getUTCDate() - 90); const b = back.toISOString().slice(0, 10);
+      const pend = orders.filter((o) => ['work', 'success'].includes(cat(o)) && o.rest_pay > 0.009 && o.order_date >= b);
+      return {
+        payed: s.reduce((a, o) => a + o.payed_amount, 0), rest: s.reduce((a, o) => a + o.rest_pay, 0), unpaid_count: s.filter((o) => o.rest_pay > 0.009).length,
+        pending_sum: pend.reduce((a, o) => a + o.rest_pay, 0), pending_count: pend.length,
+        by_method: group(s, (o) => o.payment_method || '—', (k) => ({ method: k, cnt: 0, amount: 0 }), (x, o) => { x.cnt++; x.amount += o.payment_amount; }).sort((a, b) => b.amount - a.amount),
+      };
+    },
+    stats_managers({ p_from, p_to, p_fin, p_store }) {
+      const orders = scoped(p_store);
+      const m = new Map(); const g = (id) => { if (!m.has(id)) m.set(id, { manager_id: id, leads: 0, confirmed: 0, success: 0, fail: 0, returns: 0, sales: 0, revenue: 0, gross: 0, upsell: 0 }); return m.get(id); };
+      for (const o of orders) {
+        const c = cat(o); if (c === 'ignore') continue;
+        if (inR(o.order_date, p_from, p_to)) { const x = g(o.manager_id); x.leads++; if (conf(o)) x.confirmed++; if (c === 'success') x.success++; if (c === 'fail') x.fail++; if (c === 'return') x.returns++; }
+        if (c === 'success' && inR(fin(o, p_fin), p_from, p_to)) { const x = g(o.manager_id); x.sales++; x.revenue += o.payment_amount; x.gross += o.payment_amount - o.cost_price - o.shipping_costs - o.commission - o.expenses_amount; x.upsell += o.upsell_amount; }
+      }
+      return [...m.values()];
+    },
+    stats_manager_daily({ p_from, p_to, p_fin, p_store }) {
+      const list = scoped(p_store).filter((o) => cat(o) === 'success' && inR(fin(o, p_fin), p_from, p_to));
+      return group(list, (o) => fin(o, p_fin) + '|' + o.manager_id, (k) => ({ day: k.split('|')[0], manager_id: Number(k.split('|')[1]), sales: 0, upsell: 0 }), (x, o) => { x.sales++; x.upsell += o.upsell_amount; });
+    },
+    stats_overview_meta() {
+      return { orders: orders.length, first_order: orders[0]?.order_date, last_order: orders[orders.length - 1]?.order_time,
+        sites: stores.map((st) => ({ id: st.id, orders: orders.filter((o) => o.sajt === st.id).length })) };
+    },
+  };
+  const tables = { statuses, stores, managers, expenses, rules, sync_log: syncLog };
+  const clone = (x) => JSON.parse(JSON.stringify(x));
+  return {
+    mode: 'demo',
+    async session() { return { email: 'demo@shop.ua' }; },
+    async signIn() { return { email: 'demo@shop.ua' }; },
+    async signOut() {},
+    async settings() { return clone(settings); },
+    async setSetting(k, v) { settings[k] = v; },
+    async rpc(name, params) { return clone(R[name](params)); },
+    async list(table, opts = {}) {
+      let rows = tables[table];
+      if (table === 'expenses' && opts.from) rows = rows.filter((e) => e.date <= opts.to && (e.date_to || e.date) >= opts.from);
+      if (table === 'expenses') rows = [...rows].sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
+      if (table === 'statuses' || table === 'stores') rows = [...rows].sort((a, b) => a.sort - b.sort);
+      return clone(rows);
+    },
+    async insert(table, row) {
+      const t = tables[table];
+      const r = { ...row, id: table === 'rules' ? rid++ : eid++ };
+      if (table === 'expenses') r.amount_uah = Math.round(r.amount * (r.rate || 1) * 100) / 100;
+      t.push(r); return r;
+    },
+    async update(table, idv, patch) {
+      const r = tables[table].find((x) => x.id === idv);
+      Object.assign(r, patch);
+      if (table === 'expenses') r.amount_uah = Math.round(r.amount * (r.rate || 1) * 100) / 100;
+      return r;
+    },
+    async remove(table, idv) { const t = tables[table]; t.splice(t.findIndex((x) => x.id === idv), 1); },
+    async sync() {
+      await new Promise((r) => setTimeout(r, 900));
+      const e = { id: syncLog.length + 1, at: new Date().toISOString(), mode: 'manual', orders: 0, pages: 1, ok: true, message: 'Демо: нових замовлень немає' };
+      syncLog.unshift(e); settings.last_sync = e.at; settings.last_run = e.at;
+      return { success: true, message: e.message };
+    },
+  };
+}
+
+</script>
+<script>
+// =====================================================================
+//  НАЛАШТУВАННЯ ПІДКЛЮЧЕННЯ
+//  Supabase → кнопка Connect (або Project Settings → API Keys): адреса проєкту і Publishable key.
+//  Поки поля порожні, дашборд працює на демо-даних.
+// =====================================================================
+const CONFIG = {
+  SUPABASE_URL: 'https://lwaxkiuzxauilivpxojt.supabase.co',
+  SUPABASE_ANON_KEY: 'sb_publishable_LQhZclkzkzPvP6HDCRB2Xw_7gLI9hPQ',
+  SYNC_FUNCTION: 'constructor-sync',
+};
+
+(() => {
+'use strict';
+// ---------------------------------------------------------------- утиліти
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const N = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+const nf0 = new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 });
+const nf2 = new Intl.NumberFormat('uk-UA', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const uah = (v) => (v == null || !Number.isFinite(v) ? '—' : (v < 0 ? '−' : '') + nf0.format(Math.abs(Math.round(v))) + ' ₴');
+const uah2 = (v) => (v == null ? '—' : nf2.format(v) + ' ₴');
+const int = (v) => (v == null ? '—' : nf0.format(v));
+const pct = (v, d = 1) => (v == null || !Number.isFinite(v) ? '—' : (v * 100).toFixed(d).replace('.', ',') + '%');
+const compact = (v) => { const a = Math.abs(v); const s = v < 0 ? '−' : ''; return a >= 1e6 ? s + (a / 1e6).toFixed(1).replace('.', ',') + ' млн' : a >= 1e3 ? s + Math.round(a / 1e3) + ' тис' : s + Math.round(a); };
+const div = (a, b) => (b ? a / b : null);
+const pad = (n) => String(n).padStart(2, '0');
+const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const P = (s) => new Date(s + 'T00:00:00Z');
+const U = (d) => d.toISOString().slice(0, 10);
+const addDays = (s, n) => { const d = P(s); d.setUTCDate(d.getUTCDate() + n); return U(d); };
+const daysBetween = (a, b) => Math.round((P(b) - P(a)) / 86400e3);
+const dim = (s) => { const d = P(s); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate(); };
+const fdate = (s) => (s ? `${s.slice(8, 10)}.${s.slice(5, 7)}.${s.slice(0, 4)}` : '');
+const fdt = (iso) => { if (!iso) return '—'; const d = new Date(iso); return isNaN(d) ? String(iso) : d.toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); };
+const MONTHS = ['Січень', 'Лютий', 'Березень', 'Квітень', 'Травень', 'Червень', 'Липень', 'Серпень', 'Вересень', 'Жовтень', 'Листопад', 'Грудень'];
+const MON = ['січ', 'лют', 'бер', 'кві', 'тра', 'чер', 'лип', 'сер', 'вер', 'жов', 'лис', 'гру'];
+const CAT = { work: 'В роботі', success: 'Продаж', fail: 'Відмова', return: 'Повернення', ignore: 'Не враховувати' };
+const store = { get(k, d) { try { const v = localStorage.getItem('ca_' + k); return v == null ? d : JSON.parse(v); } catch { return d; } }, set(k, v) { try { localStorage.setItem('ca_' + k, JSON.stringify(v)); } catch { /* ok */ } } };
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+function toast(msg, err = false) {
+  const t = $('#toast'); t.textContent = msg; t.classList.toggle('err', err); t.classList.add('on');
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('on'), 3200);
+}
+function confirmBox(title, text, okLabel = 'Видалити') {
+  return new Promise((resolve) => {
+    const bg = document.createElement('div'); bg.className = 'modal-bg';
+    bg.innerHTML = `<div class="modal" role="dialog" aria-modal="true"><h3></h3><p></p><div class="acts"><button class="btn" data-a="0">Скасувати</button><button class="btn primary" data-a="1"></button></div></div>`;
+    $('h3', bg).textContent = title; $('p', bg).textContent = text; $('[data-a="1"]', bg).textContent = okLabel;
+    bg.addEventListener('click', (e) => { const a = e.target.closest('[data-a]'); if (a || e.target === bg) { bg.remove(); resolve(a?.dataset.a === '1'); } });
+    document.body.appendChild(bg); $('[data-a="1"]', bg).focus();
+  });
+}
+
+// ---------------------------------------------------------------- іконки
+const I = {
+  shop: '<path d="M4 9 5.5 4h13L20 9"/><path d="M4 9h16v2a3 3 0 0 1-5.3 1.9A3 3 0 0 1 12 14a3 3 0 0 1-2.7-1.1A3 3 0 0 1 4 11z"/><path d="M5 13.5V20h14v-6.5M10 20v-4h4v4"/>',
+  home: '<path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/>',
+  days: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  months: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+  box: '<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/>',
+  ads: '<path d="M3 11v2a2 2 0 0 0 2 2h2l5 4V5L7 9H5a2 2 0 0 0-2 2z"/><path d="M16 8a5 5 0 0 1 0 8M19 5a9 9 0 0 1 0 14"/>',
+  users: '<circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0"/><path d="M16 4a4 4 0 0 1 0 8M22 21a7 7 0 0 0-4-6.3"/>',
+  wallet: '<rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18M16 15h2"/><path d="M6 6V4h12v2"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+  sync: '<path d="M21 12a9 9 0 0 1-15.5 6.2L3 16M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5M3 21v-5h5"/>',
+  cal: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  check: '<path d="m5 12 5 5 9-10"/>',
+  chev: '<path d="m6 9 6 6 6-6"/>',
+  edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/>',
+  trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+  dl: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+};
+const icon = (n) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[n]}</svg>`;
+const LOGO = `<svg class="logo-mark" viewBox="0 0 34 34" aria-hidden="true"><rect x="1" y="9" width="32" height="22" rx="4" fill="#ffc21a"/><rect x="5" y="4" width="9" height="7" rx="2.5" fill="#ffc21a"/><rect x="20" y="4" width="9" height="7" rx="2.5" fill="#ffc21a"/><rect x="1" y="9" width="32" height="3" fill="#e0a800"/><path d="M8 22h4l3-5 4 9 3-4h4" fill="none" stroke="#111318" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+// ---------------------------------------------------------------- доступ до даних (Supabase)
+function createLiveApi() {
+  const sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+  const chk = ({ data, error }) => { if (error) throw new Error(error.message || String(error)); return data; };
+  const ORDER = { expenses: ['date', false], statuses: ['sort', true], stores: ['sort', true], managers: ['id', true], rules: ['id', true], sync_log: ['id', false] };
+  return {
+    mode: 'live',
+    async session() { const { data } = await sb.auth.getSession(); return data.session ? { email: data.session.user.email } : null; },
+    async signIn(email, password) { const r = await sb.auth.signInWithPassword({ email, password }); if (r.error) throw new Error(/fetch|network|failed/i.test(r.error.message || '') ? 'Немає зв’язку з Supabase. Перевірте адресу в CONFIG та інтернет.' : 'Невірний email або пароль'); return { email }; },
+    async signOut() { await sb.auth.signOut(); },
+    async settings() { const rows = chk(await sb.from('settings').select('key,value')); return Object.fromEntries(rows.map((r) => [r.key, r.value])); },
+    async setSetting(key, value) { chk(await sb.from('settings').upsert({ key, value })); },
+    async rpc(name, params) { return chk(await sb.rpc(name, params)); },
+    async list(table, opts = {}) {
+      let q = sb.from(table).select('*');
+      if (table === 'expenses' && opts.from) q = q.lte('date', opts.to).gte('date', addDays(opts.from, -400));
+      const [col, asc] = ORDER[table] || ['id', true];
+      q = q.order(col, { ascending: asc });
+      if (table === 'expenses') q = q.order('id', { ascending: false });
+      if (table === 'sync_log') q = q.limit(15);
+      let rows = chk(await q);
+      if (table === 'expenses' && opts.from) rows = rows.filter((e) => (e.date_to || e.date) >= opts.from);
+      return rows;
+    },
+    async insert(table, row) { return chk(await sb.from(table).insert(row).select().single()); },
+    async update(table, id, patch) { return chk(await sb.from(table).update(patch).eq('id', id).select().single()); },
+    async remove(table, id) { chk(await sb.from(table).delete().eq('id', id)); },
+    // Зміни від інших користувачів у реальному часі
+    subscribe(cb) {
+      sb.channel('dashboard-live')
+        .on('postgres_changes', { event: '*', schema: 'public' }, (p) => cb(p.table, p))
+        .subscribe((status) => { S.live = status === 'SUBSCRIBED'; updateSyncPill(); });
+    },
+    async sync(body = {}) {
+      const { data, error } = await sb.functions.invoke(CONFIG.SYNC_FUNCTION, { body });
+      if (error) { let msg = error.message; try { const j = await error.context.json(); msg = j.error || msg; } catch { /* ok */ } throw new Error(msg); }
+      return data;
+    },
+  };
+}
+
+const LIVE = !!(CONFIG.SUPABASE_URL && CONFIG.SUPABASE_ANON_KEY && window.supabase);
+const api = LIVE ? createLiveApi() : createDemoApi();
+
+// ---------------------------------------------------------------- розрахунок звіту
+const CHANNELS = [
+  ['Meta', /(^|[^a-z])(fb|facebook|insta|instagram|ig|meta)([^a-z]|$)/i],
+  ['Google', /google|gads|adwords|youtube/i],
+  ['TikTok', /tiktok|(^|[^a-z])tt([^a-z]|$)/i],
+  ['Розсилки', /sms|viber|email|e-mail|mail|esputnik|turbosms|sendpulse|telegram/i],
+  ['Блогери', /blog|блог|influenc/i],
+];
+const channelOf = (u) => { if (!u) return 'Без мітки'; for (const [n, re] of CHANNELS) if (re.test(u)) return n; return u; };
+
+function emptyDay() { return { leads: 0, confirmed: 0, unconfirmed: 0, success: 0, fail: 0, returns: 0, work: 0, sales: 0, revenue: 0, cogs: 0, order_costs: 0, return_costs: 0, payed: 0, upsell: 0, ads: 0, other: 0, byCat: {}, adsByCh: {}, byRule: {} }; }
+
+// Будує денний P&L: дані замовлень + ручні витрати + правила + з/п менеджерів
+function buildDays(from, to, daily, expenses, rules, mgrDaily, managers, settings, storeDays = {}) {
+  const days = {};
+  for (let d = from; d <= to; d = addDays(d, 1)) days[d] = emptyDay();
+  for (const r of daily) {
+    const x = days[String(r.day).slice(0, 10)]; if (!x) continue;
+    for (const k of ['leads', 'confirmed', 'unconfirmed', 'success', 'fail', 'returns', 'work', 'sales', 'revenue', 'cogs', 'order_costs', 'return_costs', 'payed', 'upsell']) x[k] += N(r[k]);
+  }
+  const add = (x, cat, v) => { x.byCat[cat] = (x.byCat[cat] || 0) + v; };
+  for (const e of expenses) {
+    const end = e.date_to && e.date_to >= e.date ? e.date_to : e.date;
+    const per = N(e.amount_uah) / (daysBetween(e.date, end) + 1);
+    for (let d = e.date > from ? e.date : from; d <= end && d <= to; d = addDays(d, 1)) {
+      const x = days[d];
+      if (e.category === 'Реклама') { x.ads += per; const ch = e.channel || 'Інше'; x.adsByCh[ch] = (x.adsByCh[ch] || 0) + per; } else x.other += per;
+      add(x, e.category, per);
+    }
+  }
+  for (const [d, x] of Object.entries(days)) {
+    for (const r of rules) {
+      if (!r.active || (r.date_from && d < r.date_from) || (r.date_to && d > r.date_to)) continue;
+      // правило конкретного магазину в режимі «Усі» рахуємо від виручки саме цього магазину
+      const base = r.store_id != null && storeDays[r.store_id] ? (storeDays[r.store_id][d] || { revenue: 0, sales: 0 }) : x;
+      const v = r.kind === 'percent_revenue' ? base.revenue * N(r.value) / 100 : r.kind === 'fixed_monthly' ? N(r.value) / dim(d) : N(r.value) * base.sales;
+      if (v) { x.other += v; add(x, r.category, v); x.byRule[r.id] = (x.byRule[r.id] || 0) + v; }
+    }
+  }
+  if (settings.managers_in_pnl !== false) {
+    const mm = new Map(managers.map((m) => [m.id, m]));
+    for (const r of mgrDaily) {
+      const x = days[String(r.day).slice(0, 10)]; const m = mm.get(N(r.manager_id)); if (!x || !m) continue;
+      const v = N(m.rate_per_order) * N(r.sales) + N(m.upsell_pct) * N(r.upsell);
+      if (v) { x.other += v; add(x, 'Зарплата менеджерів', v); }
+    }
+  }
+  return days;
+}
+function totals(list) {
+  const t = emptyDay();
+  for (const x of list) {
+    for (const k of Object.keys(t)) if (typeof t[k] === 'number') t[k] += x[k];
+    for (const [c, v] of Object.entries(x.byCat)) t.byCat[c] = (t.byCat[c] || 0) + v;
+    for (const [c, v] of Object.entries(x.adsByCh)) t.adsByCh[c] = (t.adsByCh[c] || 0) + v;
+    for (const [c, v] of Object.entries(x.byRule)) t.byRule[c] = (t.byRule[c] || 0) + v;
+  }
+  const gross = t.revenue - t.cogs - t.order_costs - t.return_costs;
+  const net = gross - t.ads - t.other;
+  const closed = t.success + t.fail + t.returns;
+  return Object.assign(t, {
+    gross, net, closed,
+    margin: div(t.revenue - t.cogs, t.revenue), grossMargin: div(gross, t.revenue), netMargin: div(net, t.revenue),
+    confRate: div(t.confirmed, t.leads), cpc: t.ads ? div(t.ads, t.confirmed) : null,
+    avg: div(t.revenue, t.sales), conv: div(t.success, t.leads), convClosed: div(t.success, closed),
+    returnRate: div(t.returns, t.success + t.returns), refuseRate: div(t.fail + t.returns, closed),
+    romi: div(gross - t.ads, t.ads), cpl: div(t.ads, t.leads), cpo: t.ads ? div(t.ads, t.sales) : null, drr: div(t.ads, t.revenue),
+  });
+}
+function bucketKey(d, g) { if (g === 'month') return d.slice(0, 7); if (g === 'week') { const w = (P(d).getUTCDay() + 6) % 7; return addDays(d, -w); } return d; }
+function bucketLabel(k, g) { if (g === 'month') return MON[+k.slice(5, 7) - 1] + ' ' + k.slice(2, 4); return k.slice(8, 10) + '.' + k.slice(5, 7); }
+function series(days, g) {
+  const m = new Map();
+  for (const [d, x] of Object.entries(days)) { const k = bucketKey(d, g); if (!m.has(k)) m.set(k, []); m.get(k).push(x); }
+  return [...m.entries()].map(([k, list]) => ({ key: k, label: bucketLabel(k, g), ...totals(list) }));
+}
+
+// ---------------------------------------------------------------- стан
+const S = {
+  page: store.get('page', 'overview'),
+  preset: store.get('preset', 'month'),
+  from: null, to: null,
+  group: null,
+  settings: {}, statuses: [], managers: [], rules: [], stores: [],
+  store: store.get('store', null), // null = усі магазини
+  data: null, // завантажені дані поточного періоду
+  loadingKey: '',
+  user: null,
+};
+const PRESETS = [
+  ['today', 'Сьогодні'], ['yesterday', 'Вчора'], ['7d', 'Останні 7 днів'], ['30d', 'Останні 30 днів'],
+  ['month', 'Цей місяць'], ['prevmonth', 'Минулий місяць'], ['90d', 'Останні 90 днів'], ['year', 'Цей рік'],
+];
+function rangeFor(p) {
+  const t = new Date(); const to = ymd(t);
+  const back = (n) => addDays(to, -n);
+  switch (p) {
+    case 'today': return [to, to];
+    case 'yesterday': return [back(1), back(1)];
+    case '7d': return [back(6), to];
+    case '30d': return [back(29), to];
+    case '90d': return [back(89), to];
+    case 'month': return [to.slice(0, 8) + '01', to];
+    case 'prevmonth': { const d = new Date(t.getFullYear(), t.getMonth() - 1, 1); return [ymd(d), ymd(new Date(t.getFullYear(), t.getMonth(), 0))]; }
+    case 'year': return [to.slice(0, 5) + '01-01', to];
+  }
+  return store.get('custom', [back(29), to]);
+}
+function autoGroup(from, to) { const n = daysBetween(from, to) + 1; return n <= 45 ? 'day' : n <= 200 ? 'week' : 'month'; }
+function presetLabel() { return (PRESETS.find((p) => p[0] === S.preset) || [0, 'Свій період'])[1]; }
+[S.from, S.to] = rangeFor(S.preset);
+S.group = autoGroup(S.from, S.to);
+
+// ---------------------------------------------------------------- завантаження
+async function loadRefs() {
+  const [settings, statuses, managers, rules, stores] = await Promise.all([api.settings(), api.list('statuses'), api.list('managers'), api.list('rules'), api.list('stores')]);
+  S.settings = settings; S.statuses = statuses; S.managers = managers; S.rules = rules; S.stores = stores;
+  if (S.store != null && !activeStores().some((x) => x.id === S.store)) { S.store = null; store.set('store', null); }
+}
+const fin = () => (S.settings.finance_date === 'payment' ? 'payment' : 'order');
+
+// ---------- магазини ----------
+const activeStores = () => S.stores.filter((x) => x.active !== false);
+const storeLabel = (id) => (id == null ? 'Загальна' : (S.stores.find((x) => x.id === N(id))?.name || 'Сайт #' + id));
+// Витрати й правила, що стосуються обраного магазину.
+// «Усі магазини» — все. Конкретний магазин — його власні записи + загальні правила
+// «% від виручки» і «за продаж» (рахуються від його виручки). Загальні витрати не діляться.
+const scopeExpenses = (list, st) => (st == null ? list : list.filter((e) => N(e.store_id) === st && e.store_id != null));
+const scopeRules = (list, st) => (st == null ? list : list.filter((r) => (r.store_id != null && N(r.store_id) === st) || (r.store_id == null && r.kind !== 'fixed_monthly')));
+function dayMap(rows) { const m = {}; for (const r of rows) m[String(r.day).slice(0, 10)] = { revenue: N(r.revenue), sales: N(r.sales) }; return m; }
+
+// Денний звіт за період для магазину st (null = усі)
+async function fetchDays(from, to, st = S.store) {
+  const rules = scopeRules(S.rules, st);
+  const needStores = st == null ? [...new Set(rules.filter((r) => r.active && r.store_id != null && r.kind !== 'fixed_monthly').map((r) => N(r.store_id)))] : [];
+  const pr = { p_from: from, p_to: to, p_fin: fin(), p_store: st };
+  const [daily, mgrDaily, expAll, ...sd] = await Promise.all([
+    api.rpc('stats_daily', pr), api.rpc('stats_manager_daily', pr), api.list('expenses', { from, to }),
+    ...needStores.map((id) => api.rpc('stats_daily', { ...pr, p_store: id })),
+  ]);
+  const expenses = scopeExpenses(expAll, st);
+  const storeDays = Object.fromEntries(needStores.map((id, i) => [id, dayMap(sd[i])]));
+  return { days: buildDays(from, to, daily, expenses, rules, mgrDaily, S.managers, S.settings, storeDays), expenses };
+}
+
+async function loadPeriod(force = false) {
+  const key = `${S.from}|${S.to}|${fin()}|${S.store}`;
+  if (!force && S.data && S.data.key === key) return S.data;
+  const len = daysBetween(S.from, S.to) + 1;
+  const pFrom = addDays(S.from, -len), pTo = addDays(S.from, -1);
+  const pr = { p_from: S.from, p_to: S.to, p_fin: fin(), p_store: S.store };
+  const pr2 = { p_from: S.from, p_to: S.to, p_store: S.store };
+  const [fd, channels, products, statuses, reasons, payments, mstats] = await Promise.all([
+    fetchDays(pFrom, S.to),
+    api.rpc('stats_channels', pr), api.rpc('stats_products', pr),
+    api.rpc('stats_statuses', pr2), api.rpc('stats_reasons', pr2),
+    api.rpc('stats_payments', pr), api.rpc('stats_managers', pr),
+  ]);
+  const cur = {}, prev = {};
+  for (const [d, x] of Object.entries(fd.days)) (d >= S.from ? cur : prev)[d] = x;
+  const T = totals(Object.values(cur)), PT = totals(Object.values(prev));
+  S.data = { key, days: cur, T, PT, hasPrev: PT.leads >= 10, pFrom, pTo, expenses: fd.expenses.filter((e) => (e.date_to || e.date) >= S.from && e.date <= S.to),
+    channels, products, statuses, reasons, payments: Array.isArray(payments) ? payments[0] || {} : payments, mstats };
+  return S.data;
+}
+
+// ---------------------------------------------------------------- каркас
+function shell() {
+  const nav = [
+    ['Аналітика', [['overview', 'Огляд', 'home'], ['stores', 'Магазини', 'shop'], ['days', 'По днях', 'days'], ['months', 'По місяцях', 'months'], ['products', 'Товари', 'box'], ['ads', 'Реклама', 'ads'], ['managers', 'Менеджери', 'users']]],
+    ['Облік', [['expenses', 'Витрати', 'wallet']]],
+    ['Система', [['settings', 'Налаштування', 'gear']]],
+  ];
+  $('#app').innerHTML = `
+  <div class="app">
+    <aside class="side">
+      <div class="logo">${LOGO}<div><div class="logo-t">${esc(S.settings.store_name || 'Конструктори')}</div><div class="logo-s">Аналітика продажів</div></div></div>
+      <nav class="nav" aria-label="Розділи">${nav.map(([g, items]) => `<div class="nav-g">${g}</div>` + items.map(([id, t, ic]) => `<a data-page="${id}" class="${S.page === id ? 'on' : ''}" href="#${id}">${icon(ic)}<span>${t}</span></a>`).join('')).join('')}</nav>
+      <div class="side-foot">
+        <div class="sync-pill" id="syncPill"><i class="dot"></i><span>…</span></div>
+        <button class="side-btn" id="syncBtn" title="Підтягнути нові замовлення з SalesDrive">${icon('sync')}<span>Оновити дані</span></button>
+        <div class="side-user"><span>${esc(S.user?.email || '')}</span>${LIVE ? '<button id="logout">Вийти</button>' : ''}</div>
+      </div>
+    </aside>
+    <main class="main" id="main">
+      ${LIVE ? '' : '<div class="demo-bar"><b>Демо-режим.</b> Показано згенеровані дані магазину конструкторів. Щоб підключити свою базу, заповніть CONFIG у файлі (див. інструкцію).</div>'}
+      <div class="topbar"><div><h1 class="page-t" id="pageT"></h1><div class="page-s" id="pageS"></div></div><div class="tools" id="tools"></div></div>
+      <div id="page" class="loading-veil"></div>
+    </main>
+  </div>`;
+  $('.nav').addEventListener('click', (e) => { const a = e.target.closest('[data-page]'); if (!a) return; e.preventDefault(); go(a.dataset.page); });
+  $('#syncBtn').addEventListener('click', () => runSync({}));
+  $('#logout')?.addEventListener('click', async () => { await api.signOut(); location.reload(); });
+  updateSyncPill();
+}
+function updateSyncPill() {
+  const el = $('#syncPill'); if (!el) return;
+  const last = S.settings.last_sync || S.settings.last_run;
+  const mins = last ? (Date.now() - new Date(last)) / 60e3 : Infinity;
+  const backfill = S.settings.backfill_done === false || S.settings.backfill_done === 'false';
+  $('.dot', el).className = 'dot ' + (backfill ? 'warn' : mins > 90 ? 'bad' : '');
+  $('span', el).textContent = (backfill ? 'Завантажується історія…' : last ? 'Оновлено ' + fdt(last) : 'Ще не синхронізовано') + (S.live ? ' · онлайн' : '');
+}
+function storeTool() {
+  return `<div class="seg" id="storeSeg" role="group" aria-label="Магазин"><button data-store="" class="${S.store == null ? 'on' : ''}">Усі магазини</button>${activeStores().map((x) => `<button data-store="${x.id}" class="${S.store === x.id ? 'on' : ''}">${esc(x.name || 'Сайт #' + x.id)}</button>`).join('')}</div>`;
+}
+function periodTool() {
+  return `<div class="period"><button class="btn period-btn" id="periodBtn" aria-haspopup="true">${icon('cal')}<span class="lbl">${presetLabel()}</span><span class="rng">${fdate(S.from)} – ${fdate(S.to)}</span>${icon('chev')}</button></div>`;
+}
+function openPeriod() {
+  const wrap = $('.period'); if ($('.pop', wrap)) { $('.pop', wrap).remove(); return; }
+  const pop = document.createElement('div'); pop.className = 'pop';
+  pop.innerHTML = PRESETS.map(([k, t]) => `<button class="row ${S.preset === k ? 'on' : ''}" data-p="${k}">${t}${icon('check').replace('<svg', '<svg class="ck"')}</button>`).join('') +
+    `<div class="custom"><label class="f">З<input type="date" id="cFrom" value="${S.from}"></label><label class="f">По<input type="date" id="cTo" value="${S.to}"></label><button class="btn primary" id="cApply">Показати період</button></div>`;
+  wrap.appendChild(pop);
+  pop.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-p]');
+    if (b) { setPeriod(b.dataset.p); pop.remove(); }
+    if (e.target.closest('#cApply')) {
+      const f = $('#cFrom').value, t = $('#cTo').value;
+      if (!f || !t || f > t) return toast('Вкажіть коректний період', true);
+      store.set('custom', [f, t]); setPeriod('custom'); pop.remove();
+    }
+  });
+  setTimeout(() => document.addEventListener('click', function h(e) { if (!wrap.contains(e.target)) { pop.remove(); document.removeEventListener('click', h); } }), 0);
+}
+function setPeriod(p) {
+  S.preset = p; store.set('preset', p);
+  [S.from, S.to] = rangeFor(p); S.group = autoGroup(S.from, S.to);
+  render();
+}
+const PAGES = {};
+const TITLES = {
+  overview: ['Огляд', 'Головні показники магазину за період'],
+  stores: ['Магазини', 'Порівняння магазинів за період'],
+  days: ['По днях', 'Щоденний звіт: замовлення, гроші, реклама'],
+  months: ['По місяцях', 'Підсумки кожного місяця'],
+  products: ['Товари', 'Що продається, що заробляє і що повертають'],
+  ads: ['Реклама', 'Витрати та окупність каналів'],
+  managers: ['Менеджери', 'Продажі, конверсія і зарплата'],
+  expenses: ['Витрати', 'Реклама, податки, SMS та інші витрати'],
+  settings: ['Налаштування', 'Синхронізація, статуси, курси валют'],
+};
+function go(p) {
+  S.page = p; store.set('page', p);
+  $$('.nav a').forEach((a) => a.classList.toggle('on', a.dataset.page === p));
+  history.replaceState(null, '', '#' + p);
+  render();
+}
+let renderSeq = 0;
+async function render() {
+  const seq = ++renderSeq;
+  const [t, s] = TITLES[S.page]; $('#pageT').textContent = t;
+  const usesStore = !['settings', 'stores'].includes(S.page) && activeStores().length > 1;
+  $('#pageS').textContent = s + (usesStore ? ' · ' + (S.store == null ? 'усі магазини' : storeLabel(S.store)) : '');
+  const usesPeriod = !['settings', 'months'].includes(S.page);
+  $('#tools').innerHTML = (usesStore ? storeTool() : '') + (usesPeriod ? periodTool() : '');
+  $('#storeSeg')?.addEventListener('click', (e) => { const b = e.target.closest('[data-store]'); if (!b) return; S.store = b.dataset.store === '' ? null : N(b.dataset.store); store.set('store', S.store); S.data = null; render(); });
+  $('#periodBtn')?.addEventListener('click', openPeriod);
+  $('#main').classList.add('is-loading');
+  try {
+    await PAGES[S.page](seq);
+  } catch (e) {
+    console.error(e);
+    if (seq === renderSeq) $('#page').innerHTML = `<div class="card"><div class="empty">Не вдалося завантажити дані: ${esc(e.message)}</div></div>`;
+  } finally { if (seq === renderSeq) $('#main').classList.remove('is-loading'); }
+}
+
+// ---------------------------------------------------------------- графіки
+const charts = {};
+const FONT = 'Onest, system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+const crosshair = { id: 'crosshair', afterDraw(c) { const a = c.tooltip?.getActiveElements?.(); if (!a?.length || c.config.type !== 'line') return; const x = a[0].element.x, { top, bottom } = c.chartArea, g = c.ctx; g.save(); g.beginPath(); g.moveTo(x, top); g.lineTo(x, bottom); g.lineWidth = 1; g.strokeStyle = css('--ink-3'); g.globalAlpha = .45; g.stroke(); g.restore(); } };
+function chart(id, type, labels, datasets, fmt, opts = {}) {
+  if (!window.Chart) { const el = document.getElementById(id); if (el) el.parentElement.innerHTML = '<div class="empty">Графік недоступний: бібліотеку не завантажено</div>'; return; }
+  charts[id]?.destroy();
+  const grid = css('--grid'), tx = css('--ink-3');
+  charts[id] = new Chart(document.getElementById(id), {
+    type, data: { labels, datasets }, plugins: [crosshair],
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 250 },
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: { backgroundColor: css('--surface'), titleColor: css('--ink-2'), bodyColor: css('--ink'), borderColor: css('--line'), borderWidth: 1, padding: 10, boxWidth: 12, boxHeight: 3,
+          titleFont: { family: FONT }, bodyFont: { family: FONT }, callbacks: { label: (c) => ` ${fmt(c.parsed.y)}   ${c.dataset.label}` } },
+      },
+      scales: {
+        x: { stacked: !!opts.stacked, grid: { display: false }, border: { color: grid }, ticks: { color: tx, maxRotation: 0, autoSkipPadding: 14, font: { family: FONT, size: 11 } } },
+        y: { stacked: !!opts.stacked, grid: { color: grid }, border: { display: false }, suggestedMax: 1, ticks: { precision: 0, color: tx, font: { family: FONT, size: 11 }, callback: (v) => (opts.axis || compact)(v) }, beginAtZero: true },
+      },
+    },
+  });
+}
+const lineDs = (label, data, color, n) => ({ label, data, borderColor: color, backgroundColor: color, borderWidth: 2, pointRadius: n <= 20 ? 3 : 0, pointHoverRadius: 5, pointBorderColor: css('--surface'), pointBorderWidth: 2, tension: .28 });
+const barDs = (label, data, color, extra = {}) => ({ label, data, backgroundColor: color, borderRadius: 4, borderSkipped: 'start', maxBarThickness: 20, categoryPercentage: .72, barPercentage: .9, ...extra });
+const legend = (items, box) => `<div class="legend">${items.map(([n, c]) => `<span><i class="${box ? 'box' : ''}" style="background:${c}"></i>${esc(n)}</span>`).join('')}</div>`;
+const groupSeg = () => `<div class="seg" data-group>${[['day', 'Дні'], ['week', 'Тижні'], ['month', 'Місяці']].map(([k, t]) => `<button data-g="${k}" class="${S.group === k ? 'on' : ''}">${t}</button>`).join('')}</div>`;
+function bindGroup(cb) { $$('[data-group]').forEach((el) => el.addEventListener('click', (e) => { const b = e.target.closest('[data-g]'); if (!b) return; S.group = b.dataset.g; cb(); })); }
+function sparkSvg(vals) {
+  if (vals.length < 2) return '';
+  const min = Math.min(0, ...vals), max = Math.max(...vals, 1), w = 200, h = 46;
+  const pts = vals.map((v, i) => [i / (vals.length - 1) * w, h - 3 - (v - min) / (max - min || 1) * (h - 6)]);
+  const d = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+  const zero = h - 3 - (0 - min) / (max - min || 1) * (h - 6);
+  const last = pts[pts.length - 1];
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><path d="M0 ${zero.toFixed(1)}H${w}" stroke="rgba(255,255,255,.18)" stroke-dasharray="3 4"/><path d="${d} L${w} ${h} L0 ${h}Z" fill="rgba(255,194,26,.14)"/><path d="${d}" fill="none" stroke="#ffc21a" stroke-width="2" vector-effect="non-scaling-stroke"/><circle cx="${last[0]}" cy="${last[1]}" r="3" fill="#ffc21a"/></svg>`;
+}
+
+// ---------------------------------------------------------------- спільні блоки
+function delta(cur, prev, { invert = false, points = false } = {}) {
+  if (!S.data?.hasPrev || cur == null || prev == null || !Number.isFinite(cur) || !Number.isFinite(prev)) return '';
+  let d, label;
+  if (points) { d = cur - prev; label = (d >= 0 ? '+' : '−') + Math.abs(d * 100).toFixed(1).replace('.', ',') + ' п.п.'; }
+  else { if (!prev) return ''; d = (cur - prev) / Math.abs(prev); label = (d >= 0 ? '+' : '−') + Math.abs(d * 100).toFixed(0) + '%'; }
+  const flat = Math.abs(d) < (points ? 0.002 : 0.01);
+  const cls = flat ? 'flat' : (invert ? d < 0 : d > 0) ? 'up' : 'down';
+  return `<span class="delta ${cls}" title="Порівняно з ${fdate(S.data.pFrom)} – ${fdate(S.data.pTo)}">${label}</span>`;
+}
+const kpi = (l, v, s, dl = '', cls = '') => `<div class="kpi ${cls}"><div class="kpi-l"><span>${l}</span>${dl}</div><div class="kpi-v">${v}</div>${s ? `<div class="kpi-s">${s}</div>` : ''}</div>`;
+function targetFlag(v, target, better = 'higher', fmt = pct) {
+  if (v == null || target == null || target === '') return '';
+  const ok = better === 'higher' ? v >= target : v <= target;
+  return `<span class="flag ${ok ? 'good' : 'bad'}">ціль ${better === 'higher' ? '≥' : '≤'} ${fmt(target)}</span>`;
+}
+function hbars(rows, { two = false } = {}) {
+  if (!rows.length) return '<div class="empty">Немає даних за період</div>';
+  const max = Math.max(1, ...rows.map((r) => r.a + (r.b || 0)));
+  return rows.map((r) => `<div class="hb" data-tip="${esc(r.tip || '')}"><div class="nm" title="${esc(r.name)}">${r.html || esc(r.name)}</div><div class="tr"><div class="fl" style="width:${(r.a / max * 100).toFixed(1)}%"></div>${two && r.b ? `<div class="fl s2" style="width:${(r.b / max * 100).toFixed(1)}%"></div>` : ''}</div><div class="val">${r.val}</div></div>`).join('');
+}
+function plTable(T) {
+  const rows = [['Виручка', T.revenue, 'tot'], ['Собівартість товарів', -T.cogs, 'sub'], ['Доставка та комісії', -T.order_costs, 'sub'], ['Витрати на повернення', -T.return_costs, 'sub'], ['Валовий прибуток', T.gross, 'tot'], ['Реклама', -T.ads, 'sub']];
+  for (const [c, v] of Object.entries(T.byCat).sort((a, b) => b[1] - a[1])) if (c !== 'Реклама') rows.push([c, -v, 'sub']);
+  rows.push(['Чистий прибуток', T.net, 'tot final']);
+  const base = Math.max(T.revenue, 1);
+  return `<table class="pl">${rows.filter((r) => r[2] !== 'sub' || Math.abs(r[1]) >= 0.5).map(([n, v, c]) => `<tr class="${c}"><td>${esc(n)}</td><td class="bc"><div class="b ${v < 0 ? 'neg' : ''}" style="width:${Math.min(100, Math.abs(v) / base * 100).toFixed(1)}%"></div></td><td class="n ${c.includes('tot') && v < 0 ? 'neg' : ''}">${uah(v)}</td><td class="p">${pct(Math.abs(v) / base, 0)}</td></tr>`).join('')}</table>`;
+}
+function channelRows(D) {
+  const m = {};
+  const g = (n) => (m[n] = m[n] || { ch: n, leads: 0, sales: 0, revenue: 0, gross: 0, ads: 0 });
+  for (const r of D.channels) { const x = g(channelOf(r.utm_source)); x.leads += N(r.leads); x.sales += N(r.sales); x.revenue += N(r.revenue); x.gross += N(r.gross); }
+  for (const [ch, v] of Object.entries(D.T.adsByCh)) g(ch).ads += v;
+  return Object.values(m).map((c) => ({ ...c, conv: div(c.sales, c.leads), cpo: c.ads ? div(c.ads, c.sales) : null, after: c.gross - c.ads, romi: div(c.gross - c.ads, c.ads) }))
+    .sort((a, b) => b.revenue - a.revenue || b.ads - a.ads);
+}
+function channelTable(rows) {
+  const t = S.settings.targets || {};
+  return `<div class="tw"><table class="t"><thead><tr><th>Канал</th><th class="n">Заявки</th><th class="n">Продажі</th><th class="n">Конверсія</th><th class="n">Виручка</th><th class="n">Валовий прибуток</th><th class="n">Реклама</th><th class="n">Ціна продажу</th><th class="n">Прибуток після реклами</th><th class="n">ROMI</th></tr></thead><tbody>${rows.map((c) => `<tr>
+    <td><b>${esc(c.ch)}</b></td><td class="n">${int(c.leads)}</td><td class="n">${int(c.sales)}</td><td class="n">${pct(c.conv, 0)}</td><td class="n">${uah(c.revenue)}</td><td class="n">${uah(c.gross)}</td>
+    <td class="n">${c.ads ? uah(c.ads) : '<span class="muted">—</span>'}</td><td class="n">${c.cpo == null ? '<span class="muted">—</span>' : `<span class="${t.cpo && c.cpo > t.cpo ? 'neg' : ''}">${uah(c.cpo)}</span>`}</td>
+    <td class="n ${c.after < 0 ? 'neg' : ''}">${uah(c.after)}</td><td class="n">${c.romi == null ? '<span class="muted">—</span>' : `<span class="flag ${c.romi >= (t.romi ?? 1) ? 'good' : c.romi >= 0 ? 'warn' : 'bad'}">${pct(c.romi, 0)}</span>`}</td></tr>`).join('') || '<tr><td colspan="10" class="empty">Немає даних</td></tr>'}</tbody></table></div>`;
+}
+function statusesBlock(D) {
+  const total = D.statuses.reduce((s, x) => s + N(x.cnt), 0) || 1;
+  return hbars(D.statuses.map((s) => ({ name: s.name, html: `<span class="pill ${s.category}">${esc(s.name)}</span>`, a: N(s.cnt), val: `${int(N(s.cnt))} <span class="muted small">${pct(N(s.cnt) / total, 0)}</span>`, tip: `${s.name}: ${int(N(s.cnt))} заявок на ${uah(N(s.amount))}` })));
+}
+function reasonsBlock(D, limit = 8) {
+  return legend([['Відмови', css('--s1')], ['Повернення', css('--s2')]], true) + '<div style="height:6px"></div>' +
+    hbars(D.reasons.slice(0, limit).map((r) => ({ name: r.reason, a: N(r.fail), b: N(r.returns), val: int(N(r.fail) + N(r.returns)), tip: `${r.reason}: відмов ${r.fail}, повернень ${r.returns}` })), { two: true });
+}
+function paymentsBlock(D) {
+  const p = D.payments || {}; const payed = N(p.payed), rest = N(p.rest), tot = payed + rest;
+  return `<div class="stat-list">
+    <div class="stat-row"><span>Оплачено</span><b>${uah(payed)} <span class="muted small">${pct(div(payed, tot), 0)}</span></b></div>
+    <div class="stat-row"><span>Не оплачено по продажах</span><b class="${rest > 0 ? 'neg' : ''}">${uah(rest)} <span class="muted small">${int(N(p.unpaid_count))} шт</span></b></div>
+    <div class="stat-row"><span>Очікує оплати зараз <span class="muted small">(накладені в дорозі)</span></span><b>${uah(N(p.pending_sum))} <span class="muted small">${int(N(p.pending_count))} шт</span></b></div>
+  </div><div style="height:10px"></div>` +
+    hbars((p.by_method || []).map((m) => ({ name: m.method, a: N(m.amount), val: uah(N(m.amount)), tip: `${m.method}: ${int(N(m.cnt))} продажів` })));
+}
+function mgrName(id) { const m = S.managers.find((x) => x.id === N(id)); return m?.name || (id ? 'Менеджер #' + id : 'Без менеджера'); }
+function downloadCsv(name, header, rows) {
+  if (!LIVE && window.top !== window) { toast('У демо-перегляді завантаження файлів вимкнене. У робочому дашборді CSV завантажиться.'); return; }
+  const e = (v) => (v == null ? '' : /[",;\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
+  const blob = new Blob(['﻿' + [header, ...rows].map((r) => r.map(e).join(';')).join('\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+}
+
+// ================================================================ ОГЛЯД
+PAGES.overview = async (seq) => {
+  const D = await loadPeriod(); if (seq !== renderSeq) return;
+  const T = D.T, PT = D.PT, tg = S.settings.targets || {};
+  const ser = series(D.days, S.group);
+  const daySer = series(D.days, 'day');
+  $('#page').innerHTML = `
+  <div class="kpis">
+    <div class="kpi hero"><div class="kpi-l"><span>Чистий прибуток</span>${delta(T.net, PT.net)}</div><div class="kpi-v ${T.net < 0 ? 'neg' : ''}">${uah(T.net)}</div><div class="kpi-s">Рентабельність ${pct(T.netMargin)} · після всіх витрат</div>${sparkSvg(daySer.map((x) => x.net))}</div>
+    ${kpi('Виручка', uah(T.revenue), `${int(T.sales)} продажів`, delta(T.revenue, PT.revenue))}
+    ${kpi('Валовий прибуток', uah(T.gross), `Маржа ${pct(T.grossMargin)}`, delta(T.gross, PT.gross))}
+    ${kpi('Заявки', int(T.leads), `Не підтверджено ${int(T.unconfirmed)}`, delta(T.leads, PT.leads))}
+    ${kpi('Конверсія в продаж', pct(T.conv), `Серед закритих ${pct(T.convClosed)} ${targetFlag(T.conv, tg.conversion)}`, delta(T.conv, PT.conv, { points: true }))}
+    ${kpi('Середній чек', uah(T.avg), `Націнка ${pct(T.margin)}`, delta(T.avg, PT.avg))}
+    ${kpi('Реклама', uah(T.ads), `ДРР ${pct(T.drr)} від виручки`, delta(T.ads, PT.ads, { invert: true }))}
+    ${kpi('ROMI', T.romi == null ? '—' : pct(T.romi, 0), targetFlag(T.romi, tg.romi) || 'Окупність реклами', delta(T.romi, PT.romi, { points: true }))}
+    ${kpi('Ціна продажу', uah(T.cpo), `Заявка ${uah(T.cpl)} ${targetFlag(T.cpo, tg.cpo, 'lower', uah)}`, delta(T.cpo, PT.cpo, { invert: true }))}
+    ${kpi('Відмови й повернення', int(T.fail + T.returns), `${pct(T.refuseRate)} закритих · повернень ${int(T.returns)}`, delta(T.fail + T.returns, PT.fail + PT.returns, { invert: true }))}
+    ${kpi('Підтверджені', `${int(T.confirmed)} <span class="muted" style="font-size:14px;font-weight:600">${pct(T.confRate, 0)}</span>`, `Ціна підтвердженого ${uah(T.cpc)}`, delta(T.confRate, PT.confRate, { points: true }))}
+  </div>
+  <div class="grid">
+    <section class="card c8"><div class="card-h"><div><h2 class="card-t">Гроші в динаміці</h2><div class="card-s">Виручка, валовий і чистий прибуток</div></div>${groupSeg()}</div>
+      ${legend([['Виручка', css('--s1')], ['Валовий прибуток', css('--s2')], ['Чистий прибуток', css('--s3')]])}<div class="chart" style="margin-top:8px"><canvas id="cMoney" aria-label="Графік виручки та прибутку"></canvas></div></section>
+    <section class="card c4"><div class="card-h"><div><h2 class="card-t">Куди йдуть гроші</h2><div class="card-s">Від виручки до чистого прибутку</div></div></div>${plTable(T)}</section>
+    <section class="card c8"><div class="card-h"><div><h2 class="card-t">Заявки та продажі</h2><div class="card-s">Нові заявки і ті, що стали продажем</div></div>${groupSeg()}</div>
+      ${legend([['Заявки', css('--s1')], ['Продажі', css('--s2')]], true)}<div class="chart" style="margin-top:8px"><canvas id="cOrders" aria-label="Графік заявок і продажів"></canvas></div></section>
+    <section class="card c4"><div class="card-h"><div><h2 class="card-t">Воронка</h2><div class="card-s">Заявки періоду за поточним статусом</div></div></div>
+      <div class="funnel">${funnelRow('Заявки', T.leads, T.leads, '')}${funnelRow('Підтверджені', T.confirmed, T.leads, '')}${funnelRow('Не підтверджені', T.unconfirmed, T.leads, 's4')}${funnelRow('Продажі', T.success, T.leads, 's2')}${funnelRow('Відмови/повер.', T.fail + T.returns, T.leads, 's3')}</div>
+      <div style="height:14px"></div>${statusesBlock(D)}</section>
+    <section class="card c12"><div class="card-h"><div><h2 class="card-t">Рекламні канали</h2><div class="card-s">Канал визначається за UTM-міткою замовлення, витрати — з розділу «Витрати»</div></div><button class="btn sm" data-go="ads">Детальніше</button></div>${channelTable(channelRows(D))}</section>
+    <section class="card c7"><div class="card-h"><div><h2 class="card-t">Товари-лідери</h2><div class="card-s">Топ-8 за валовим прибутком</div></div><button class="btn sm" data-go="products">Усі товари</button></div>${productsMini(D.products.slice(0, 8))}</section>
+    <section class="card c5"><div class="card-h"><div><h2 class="card-t">Оплати</h2><div class="card-s">По продажах періоду</div></div></div>${paymentsBlock(D)}</section>
+    <section class="card c12"><div class="card-h"><div><h2 class="card-t">Причини відмов і повернень</h2><div class="card-s">Заявки періоду, що не стали продажем</div></div></div><div style="max-width:760px">${reasonsBlock(D)}</div></section>
+  </div>`;
+  const draw = () => {
+    const s = series(D.days, S.group);
+    chart('cMoney', 'line', s.map((x) => x.label), [lineDs('Виручка', s.map((x) => x.revenue), css('--s1'), s.length), lineDs('Валовий прибуток', s.map((x) => x.gross), css('--s2'), s.length), lineDs('Чистий прибуток', s.map((x) => x.net), css('--s3'), s.length)], uah);
+    chart('cOrders', 'bar', s.map((x) => x.label), [barDs('Заявки', s.map((x) => x.leads), css('--s1')), barDs('Продажі', s.map((x) => x.sales), css('--s2'))], int);
+    $$('[data-group] button').forEach((b) => b.classList.toggle('on', b.dataset.g === S.group));
+  };
+  draw(); bindGroup(draw);
+  $$('[data-go]').forEach((b) => b.addEventListener('click', () => go(b.dataset.go)));
+  void ser;
+};
+function funnelRow(label, v, base, cls) {
+  const w = base ? Math.max(6, v / base * 100) : 0;
+  return `<div class="fstep"><span class="muted">${label}</span><div><div class="fb ${cls}" style="width:${w.toFixed(1)}%">${int(v)}</div></div><span class="tnum" style="text-align:right">${pct(div(v, base), 0)}</span></div>`;
+}
+function productsMini(list) {
+  if (!list.length) return '<div class="empty">Немає продажів за період</div>';
+  const max = Math.max(...list.map((p) => N(p.profit)), 1);
+  return `<div class="tw"><table class="t"><thead><tr><th>Товар</th><th class="n">Продано</th><th class="n">Виручка</th><th class="n">Прибуток</th><th></th></tr></thead><tbody>${list.map((p) => `<tr><td class="name" title="${esc(p.name)}">${esc(p.name)}</td><td class="n">${int(N(p.sold))}</td><td class="n">${uah(N(p.revenue))}</td><td class="n">${uah(N(p.profit))}</td><td style="width:90px"><div class="minibar"><i style="width:${(N(p.profit) / max * 100).toFixed(0)}%"></i></div></td></tr>`).join('')}</tbody></table></div>`;
+}
+
+// ================================================================ МАГАЗИНИ
+PAGES.stores = async (seq) => {
+  const list = activeStores();
+  if (!list.length) { $('#page').innerHTML = '<div class="card"><div class="empty">Магазини з’являться після першої синхронізації. Назви задаються в Налаштуваннях.</div></div>'; return; }
+  const [res, expAll] = await Promise.all([Promise.all(list.map((x) => fetchDays(S.from, S.to, x.id))), api.list('expenses', { from: S.from, to: S.to })]);
+  if (seq !== renderSeq) return;
+  // Загальні витрати: записи без магазину + загальні щомісячні правила
+  const genDays = buildDays(S.from, S.to, [], expAll.filter((e) => e.store_id == null), S.rules.filter((r) => r.store_id == null && r.kind === 'fixed_monthly'), [], [], { managers_in_pnl: false });
+  const G = totals(Object.values(genDays)); const general = G.ads + G.other;
+  const rows = list.map((x, i) => ({ st: x, days: res[i].days, T: totals(Object.values(res[i].days)), color: ['--s1', '--s2', '--s3'][i % 3] }));
+  const rev = rows.reduce((a, r) => a + r.T.revenue, 0);
+  const net = rows.reduce((a, r) => a + r.T.net, 0) - general;
+  const tg = S.settings.targets || {};
+  $('#page').innerHTML = `
+  <div class="kpis">
+    <div class="kpi hero"><div class="kpi-l"><span>Чистий прибуток усіх магазинів</span></div><div class="kpi-v ${net < 0 ? 'neg' : ''}">${uah(net)}</div><div class="kpi-s">Прибуток магазинів ${uah(net + general)} − загальні витрати ${uah(general)}</div></div>
+    ${kpi('Виручка разом', uah(rev), `${int(rows.reduce((a, r) => a + r.T.sales, 0))} продажів`)}
+    ${kpi('Реклама разом', uah(rows.reduce((a, r) => a + r.T.ads, 0) + G.ads), G.ads ? `з них загальна ${uah(G.ads)}` : 'по магазинах')}
+    ${kpi('Загальні витрати', uah(general), 'не діляться між магазинами')}
+    ${kpi('Магазинів', int(rows.length), rows.map((r) => esc(r.st.name || '#' + r.st.id)).join(' · '))}
+  </div>
+  <div class="mgr-grid" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr))">${rows.map((r) => { const T = r.T; return `
+    <section class="card">
+      <div class="card-h" style="margin-bottom:6px"><div style="display:flex;gap:10px;align-items:center"><i style="width:12px;height:12px;border-radius:4px;background:var(${r.color});display:inline-block"></i><h2 class="card-t" style="font-size:16px">${esc(r.st.name || 'Сайт #' + r.st.id)}</h2></div><span class="flag good">${pct(div(T.revenue, rev), 0)} виручки</span></div>
+      <div class="mgr-pay ${T.net < 0 ? 'neg' : ''}" style="margin-top:4px">${uah(T.net)}</div>
+      <div class="muted small" style="margin:-4px 0 8px">чистий прибуток магазину · рентабельність ${pct(T.netMargin, 0)}</div>
+      <div class="stat-list">
+        <div class="stat-row"><span>Заявки → підтв. → продажі</span><b>${int(T.leads)} → ${int(T.confirmed)} → ${int(T.sales)}</b></div>
+        <div class="stat-row"><span>Підтверджено</span><b>${pct(T.confRate, 0)} <span class="muted small">не підтв. ${int(T.unconfirmed)}</span></b></div>
+        <div class="stat-row"><span>Конверсія</span><b>${pct(T.conv, 0)} ${targetFlag(T.conv, tg.conversion)}</b></div>
+        <div class="stat-row"><span>Виручка</span><b>${uah(T.revenue)}</b></div>
+        <div class="stat-row"><span>Середній чек</span><b>${uah(T.avg)}</b></div>
+        <div class="stat-row"><span>Валовий прибуток</span><b>${uah(T.gross)} <span class="muted small">${pct(T.grossMargin, 0)}</span></b></div>
+        <div class="stat-row"><span>Реклама</span><b>${uah(T.ads)} <span class="muted small">ДРР ${pct(T.drr, 0)}</span></b></div>
+        <div class="stat-row"><span>ROMI</span><b>${T.romi == null ? '—' : `<span class="flag ${T.romi >= (tg.romi ?? 1) ? 'good' : T.romi >= 0 ? 'warn' : 'bad'}">${pct(T.romi, 0)}</span>`}</b></div>
+        <div class="stat-row"><span>Ціна продажу</span><b>${uah(T.cpo)}</b></div>
+        <div class="stat-row"><span>Відмови й повернення</span><b>${int(T.fail + T.returns)} <span class="muted small">${pct(T.refuseRate, 0)}</span></b></div>
+        <div class="stat-row"><span>Інші витрати магазину</span><b>${uah(T.other)}</b></div>
+      </div>
+      <button class="btn sm" style="margin-top:12px" data-open="${r.st.id}">Відкрити огляд магазину</button>
+    </section>`; }).join('')}
+    <section class="card">
+      <div class="card-h" style="margin-bottom:6px"><h2 class="card-t" style="font-size:16px">Загальні витрати</h2></div>
+      <div class="mgr-pay">${uah(general)}</div>
+      <div class="muted small" style="margin:-4px 0 10px">Витрати без прив’язки до магазину. Віднімаються лише із загального прибутку.</div>
+      ${hbars(Object.entries(G.byCat).sort((a, b) => b[1] - a[1]).map(([c, v]) => ({ name: c, a: v, val: uah(v) })))}
+      <button class="btn sm" style="margin-top:12px" data-go="expenses">Внести витрату</button>
+    </section>
+  </div>
+  <section class="card" style="margin-top:14px"><div class="card-h"><div><h2 class="card-t">Магазини в динаміці</h2><div class="card-s" id="cmpSub"></div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><div class="seg" id="metricSeg">${[['revenue', 'Виручка'], ['net', 'Чистий прибуток'], ['sales', 'Продажі'], ['ads', 'Реклама']].map(([k, t]) => `<button data-m="${k}" class="${(S.cmpMetric || 'revenue') === k ? 'on' : ''}">${t}</button>`).join('')}</div>${groupSeg()}</div></div>
+    ${legend(rows.map((r) => [r.st.name || '#' + r.st.id, css(r.color)]))}<div class="chart" style="margin-top:8px"><canvas id="cStores" aria-label="Порівняння магазинів"></canvas></div></section>`;
+  const draw = () => {
+    const mt = S.cmpMetric || 'revenue';
+    const sers = rows.map((r) => series(r.days, S.group));
+    const labels = sers[0].map((x) => x.label);
+    const fmt = mt === 'sales' ? int : uah;
+    chart('cStores', 'line', labels, rows.map((r, i) => lineDs(r.st.name || '#' + r.st.id, sers[i].map((x) => x[mt]), css(r.color), labels.length)), fmt);
+    $('#cmpSub').textContent = { revenue: 'Виручка кожного магазину', net: 'Чистий прибуток кожного магазину (без загальних витрат)', sales: 'Кількість продажів', ads: 'Витрати на рекламу' }[mt];
+    $$('#metricSeg button').forEach((b) => b.classList.toggle('on', b.dataset.m === mt));
+    $$('[data-group] button').forEach((b) => b.classList.toggle('on', b.dataset.g === S.group));
+  };
+  draw(); bindGroup(draw);
+  $('#metricSeg').addEventListener('click', (e) => { const b = e.target.closest('[data-m]'); if (!b) return; S.cmpMetric = b.dataset.m; draw(); });
+  $$('[data-open]').forEach((b) => b.addEventListener('click', () => { S.store = N(b.dataset.open); store.set('store', S.store); S.data = null; go('overview'); }));
+  $$('[data-go]').forEach((b) => b.addEventListener('click', () => go(b.dataset.go)));
+};
+
+// ================================================================ ПО ДНЯХ
+PAGES.days = async (seq) => {
+  const D = await loadPeriod(); if (seq !== renderSeq) return;
+  const rows = Object.entries(D.days).map(([d, x]) => ({ d, ...totals([x]) })).reverse();
+  const T = D.T;
+  const cols = [
+    ['Дата', (r) => `<b>${fdate(r.d)}</b> <span class="muted small">${['нд', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'][P(r.d).getUTCDay()]}</span>`],
+    ['Заявки', (r) => int(r.leads), 1], ['Підтв.', (r) => `<b>${int(r.confirmed)}</b>`, 1], ['Не підтв.', (r) => (r.unconfirmed ? `<span class="warn-t">${int(r.unconfirmed)}</span>` : '0'), 1], ['% підтв.', (r) => pct(r.confRate, 0), 1], ['Продажі', (r) => int(r.sales), 1], ['Відмови', (r) => (r.fail ? `<span class="neg">${int(r.fail)}</span>` : '0'), 1], ['Повер.', (r) => int(r.returns), 1],
+    ['Конверсія', (r) => pct(r.conv, 0), 1], ['Виручка', (r) => uah(r.revenue), 1], ['Собівартість', (r) => uah(r.cogs), 1], ['Валовий', (r) => uah(r.gross), 1],
+    ['Реклама', (r) => uah(r.ads), 1], ['Інші витрати', (r) => uah(r.other), 1], ['Чистий прибуток', (r) => `<b class="${r.net < 0 ? 'neg' : ''}">${uah(r.net)}</b>`, 1], ['Ціна продажу', (r) => uah(r.cpo), 1],
+  ];
+  $('#page').innerHTML = `
+  <div class="kpis">
+    ${kpi('Чистий прибуток', `<span class="${T.net < 0 ? 'neg' : ''}">${uah(T.net)}</span>`, `В середньому ${uah(T.net / Math.max(1, rows.length))} на день`, delta(T.net, D.PT.net))}
+    ${kpi('Виручка', uah(T.revenue), `${uah(T.revenue / Math.max(1, rows.length))} на день`, delta(T.revenue, D.PT.revenue))}
+    ${kpi('Продажі', int(T.sales), `${(T.sales / Math.max(1, rows.length)).toFixed(1).replace('.', ',')} на день`, delta(T.sales, D.PT.sales))}
+    ${kpi('Заявки', int(T.leads), `${(T.leads / Math.max(1, rows.length)).toFixed(1).replace('.', ',')} на день · не підтв. ${int(T.unconfirmed)}`, delta(T.leads, D.PT.leads))}
+    ${kpi('Реклама', uah(T.ads), `${uah(T.ads / Math.max(1, rows.length))} на день`, delta(T.ads, D.PT.ads, { invert: true }))}
+    ${kpi('Підтверджені', int(T.confirmed), `${pct(T.confRate, 0)} заявок · ціна ${uah(T.cpc)}`, delta(T.confRate, D.PT.confRate, { points: true }))}
+  </div>
+  <section class="card"><div class="card-h"><div><h2 class="card-t">Щоденний звіт</h2><div class="card-s">Реклама й витрати, внесені за період, розподілені по днях</div></div><button class="btn sm" id="csv">${icon('dl')}CSV</button></div>
+    <div class="tw tbl-scroll"><table class="t"><thead><tr>${cols.map((c) => `<th class="${c[2] ? 'n' : ''}">${c[0]}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map((r) => `<tr>${cols.map((c) => `<td class="${c[2] ? 'n' : ''}">${c[1](r)}</td>`).join('')}</tr>`).join('')}</tbody>
+    <tfoot><tr>${cols.map((c, i) => `<td class="${c[2] ? 'n' : ''}">${i === 0 ? 'Разом' : c[1]({ d: S.to, ...T })}</td>`).join('')}</tr></tfoot></table></div></section>`;
+  $('#csv').addEventListener('click', () => downloadCsv(`dni_${S.from}_${S.to}.csv`, ['Дата', 'Заявки', 'Підтверджені', 'Не підтверджені', 'Продажі', 'Відмови', 'Повернення', 'Виручка', 'Собівартість', 'Доставка/комісії', 'Валовий', 'Реклама', 'Інші витрати', 'Чистий'],
+    rows.map((r) => [r.d, r.leads, r.confirmed, r.unconfirmed, r.sales, r.fail, r.returns, r.revenue.toFixed(2), r.cogs.toFixed(2), r.order_costs.toFixed(2), r.gross.toFixed(2), r.ads.toFixed(2), r.other.toFixed(2), r.net.toFixed(2)])));
+};
+
+// ================================================================ ПО МІСЯЦЯХ
+PAGES.months = async (seq) => {
+  const nowY = new Date().getFullYear();
+  const y = S.year || nowY;
+  $('#tools').insertAdjacentHTML('beforeend', `<div class="seg" id="yearSeg">${[nowY - 2, nowY - 1, nowY].map((v) => `<button data-y="${v}" class="${v === y ? 'on' : ''}">${v}</button>`).join('')}</div>`);
+  $('#yearSeg').addEventListener('click', (e) => { const b = e.target.closest('[data-y]'); if (b) { S.year = +b.dataset.y; render(); } });
+  const from = `${y}-01-01`, to = y === nowY ? ymd(new Date()) : `${y}-12-31`;
+  const { days } = await fetchDays(from, to);
+  if (seq !== renderSeq) return;
+  const ms = series(days, 'month').filter((m) => m.leads || m.revenue || m.ads || m.other);
+  const YT = totals(Object.values(days));
+  $('#page').innerHTML = `
+  <div class="kpis">
+    <div class="kpi hero"><div class="kpi-l"><span>Чистий прибуток за ${y}</span></div><div class="kpi-v ${YT.net < 0 ? 'neg' : ''}">${uah(YT.net)}</div><div class="kpi-s">Рентабельність ${pct(YT.netMargin)}</div>${sparkSvg(ms.map((m) => m.net))}</div>
+    ${kpi('Виручка', uah(YT.revenue), `${int(YT.sales)} продажів`)}
+    ${kpi('Валовий прибуток', uah(YT.gross), `Маржа ${pct(YT.grossMargin)}`)}
+    ${kpi('Реклама', uah(YT.ads), `ДРР ${pct(YT.drr)}`)}
+    ${kpi('ROMI', pct(YT.romi, 0), 'За рік')}
+  </div>
+  <div class="grid">
+    <section class="card c12"><div class="card-h"><div><h2 class="card-t">Чистий прибуток по місяцях</h2><div class="card-s">${y} рік</div></div></div>
+      ${legend([['Виручка', css('--s1')], ['Чистий прибуток', css('--s3')]], true)}<div class="chart" style="margin-top:8px"><canvas id="cMonths" aria-label="Прибуток по місяцях"></canvas></div></section>
+    <section class="card c12"><div class="card-h"><div><h2 class="card-t">Місяці</h2><div class="card-s">Натисніть на місяць, щоб відкрити його огляд</div></div></div>
+      <div class="tw"><table class="t"><thead><tr><th>Місяць</th><th class="n">Заявки</th><th class="n">Підтв.</th><th class="n">% підтв.</th><th class="n">Продажі</th><th class="n">Конверсія</th><th class="n">Виручка</th><th class="n">Середній чек</th><th class="n">Валовий</th><th class="n">Реклама</th><th class="n">ROMI</th><th class="n">Інші витрати</th><th class="n">Чистий прибуток</th><th class="n">Рентаб.</th></tr></thead>
+      <tbody>${ms.slice().reverse().map((m) => `<tr style="cursor:pointer" data-month="${m.key}"><td><b>${MONTHS[+m.key.slice(5, 7) - 1]}</b></td><td class="n">${int(m.leads)}</td><td class="n">${int(m.confirmed)}</td><td class="n">${pct(m.confRate, 0)}</td><td class="n">${int(m.sales)}</td><td class="n">${pct(m.conv, 0)}</td><td class="n">${uah(m.revenue)}</td><td class="n">${uah(m.avg)}</td><td class="n">${uah(m.gross)}</td><td class="n">${uah(m.ads)}</td><td class="n">${pct(m.romi, 0)}</td><td class="n">${uah(m.other)}</td><td class="n"><b class="${m.net < 0 ? 'neg' : ''}">${uah(m.net)}</b></td><td class="n">${pct(m.netMargin, 0)}</td></tr>`).join('') || '<tr><td colspan="14" class="empty">Немає даних за рік</td></tr>'}</tbody>
+      <tfoot><tr><td>Разом</td><td class="n">${int(YT.leads)}</td><td class="n">${int(YT.confirmed)}</td><td class="n">${pct(YT.confRate, 0)}</td><td class="n">${int(YT.sales)}</td><td class="n">${pct(YT.conv, 0)}</td><td class="n">${uah(YT.revenue)}</td><td class="n">${uah(YT.avg)}</td><td class="n">${uah(YT.gross)}</td><td class="n">${uah(YT.ads)}</td><td class="n">${pct(YT.romi, 0)}</td><td class="n">${uah(YT.other)}</td><td class="n">${uah(YT.net)}</td><td class="n">${pct(YT.netMargin, 0)}</td></tr></tfoot></table></div></section>
+  </div>`;
+  chart('cMonths', 'bar', ms.map((m) => MON[+m.key.slice(5, 7) - 1]), [barDs('Виручка', ms.map((m) => m.revenue), css('--s1')), barDs('Чистий прибуток', ms.map((m) => m.net), css('--s3'))], uah);
+  $('tbody', $('#page'))?.addEventListener('click', (e) => {
+    const tr = e.target.closest('[data-month]'); if (!tr) return;
+    const k = tr.dataset.month; const last = ymd(new Date(+k.slice(0, 4), +k.slice(5, 7), 0));
+    store.set('custom', [k + '-01', last > ymd(new Date()) ? ymd(new Date()) : last]); S.preset = 'custom'; store.set('preset', 'custom');
+    [S.from, S.to] = rangeFor('custom'); S.group = 'day'; go('overview');
+  });
+};
+
+// ================================================================ ТОВАРИ
+PAGES.products = async (seq) => {
+  const D = await loadPeriod(); if (seq !== renderSeq) return;
+  const list = D.products.map((p) => ({ ...p, sold: N(p.sold), refused: N(p.refused), returned: N(p.returned), revenue: N(p.revenue), cost: N(p.cost), profit: N(p.profit) }))
+    .map((p) => ({ ...p, buyout: div(p.sold, p.sold + p.refused + p.returned), margin: div(p.profit, p.revenue) }));
+  const sold = list.reduce((s, p) => s + p.sold, 0), ref = list.reduce((s, p) => s + p.refused + p.returned, 0);
+  const st = S.prodSort || { k: 'profit', dir: -1 };
+  $('#page').innerHTML = `
+  <div class="kpis">
+    ${kpi('Товарів продавалось', int(list.filter((p) => p.sold).length), `з ${int(list.length)} у заявках`)}
+    ${kpi('Продано, шт', int(sold), uah(list.reduce((s, p) => s + p.revenue, 0)))}
+    ${kpi('Відмови й повернення, шт', int(ref), 'одиниць товару')}
+    ${kpi('Викуп', pct(div(sold, sold + ref)), 'продано / (продано + відмови)')}
+    ${kpi('Прибуток з товарів', uah(list.reduce((s, p) => s + p.profit, 0)), 'ціна − собівартість')}
+    ${kpi('Середня маржа', pct(div(list.reduce((s, p) => s + p.profit, 0), list.reduce((s, p) => s + p.revenue, 0))), 'по товарах')}
+  </div>
+  <div class="grid">
+    <section class="card c8"><div class="card-h"><div><h2 class="card-t">Усі товари</h2><div class="card-s">Натисніть на заголовок, щоб відсортувати</div></div><input type="text" id="pSearch" placeholder="Пошук за назвою або SKU" style="max-width:260px" value="${esc(S.prodQ || '')}"></div><div id="pTable"></div></section>
+    <section class="card c4"><div class="card-h"><div><h2 class="card-t">Найчастіше не викуповують</h2><div class="card-s">Відмови + повернення, шт</div></div></div>
+      ${hbars(list.filter((p) => p.refused + p.returned > 0).sort((a, b) => (b.refused + b.returned) - (a.refused + a.returned)).slice(0, 10).map((p) => ({ name: p.name, a: p.refused, b: p.returned, val: `${int(p.refused + p.returned)} <span class="muted small">викуп ${pct(p.buyout, 0)}</span>`, tip: `${p.name}: продано ${p.sold}, відмов ${p.refused}, повернень ${p.returned}` })), { two: true })}</section>
+  </div>`;
+  const cols = [['name', 'Товар'], ['sold', 'Продано', 1], ['refused', 'Відмов', 1], ['returned', 'Повер.', 1], ['buyout', 'Викуп', 1], ['revenue', 'Виручка', 1], ['cost', 'Собівартість', 1], ['profit', 'Прибуток', 1], ['margin', 'Маржа', 1]];
+  const draw = () => {
+    const q = (S.prodQ || '').toLowerCase();
+    const rows = list.filter((p) => !q || (p.name || '').toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q))
+      .sort((a, b) => { const x = a[st.k] ?? -Infinity, y = b[st.k] ?? -Infinity; return (typeof x === 'string' ? x.localeCompare(y) : x - y) * st.dir; });
+    const f = { sold: int, refused: (v) => (v ? `<span class="neg">${int(v)}</span>` : '0'), returned: int, buyout: (v) => pct(v, 0), revenue: uah, cost: uah, profit: (v) => `<b>${uah(v)}</b>`, margin: (v) => pct(v, 0) };
+    $('#pTable').innerHTML = `<div class="tw tbl-scroll"><table class="t"><thead><tr>${cols.map(([k, t, n]) => `<th class="sort ${n ? 'n' : ''} ${st.k === k ? 'sorted' : ''}" data-k="${k}">${t}${st.k === k ? (st.dir < 0 ? ' ↓' : ' ↑') : ''}</th>`).join('')}</tr></thead><tbody>${rows.map((p) => `<tr><td class="name" title="${esc(p.name)}">${esc(p.name)}${p.sku ? `<div class="muted small">${esc(p.sku)}</div>` : ''}</td>${cols.slice(1).map(([k]) => `<td class="n">${f[k](p[k])}</td>`).join('')}</tr>`).join('') || '<tr><td colspan="9" class="empty">Нічого не знайдено</td></tr>'}</tbody></table></div>`;
+    $('#pTable thead').addEventListener('click', (e) => { const th = e.target.closest('[data-k]'); if (!th) return; st.dir = st.k === th.dataset.k ? -st.dir : -1; st.k = th.dataset.k; S.prodSort = st; draw(); });
+  };
+  draw();
+  $('#pSearch').addEventListener('input', (e) => { S.prodQ = e.target.value; draw(); });
+};
+
+// ================================================================ РЕКЛАМА
+PAGES.ads = async (seq) => {
+  const D = await loadPeriod(); if (seq !== renderSeq) return;
+  const T = D.T, PT = D.PT, tg = S.settings.targets || {};
+  const rows = channelRows(D);
+  const adsList = D.expenses.filter((e) => e.category === 'Реклама');
+  $('#page').innerHTML = `
+  <div class="kpis">
+    ${kpi('Витрачено на рекламу', uah(T.ads), `ДРР ${pct(T.drr)} від виручки`, delta(T.ads, PT.ads, { invert: true }))}
+    ${kpi('ROMI', pct(T.romi, 0), targetFlag(T.romi, tg.romi) || '(валовий − реклама) / реклама', delta(T.romi, PT.romi, { points: true }))}
+    ${kpi('Ціна продажу', uah(T.cpo), targetFlag(T.cpo, tg.cpo, 'lower', uah) || 'реклама / продажі', delta(T.cpo, PT.cpo, { invert: true }))}
+    ${kpi('Ціна заявки', uah(T.cpl), 'реклама / заявки', delta(T.cpl, PT.cpl, { invert: true }))}
+    ${kpi('Прибуток після реклами', uah(T.gross - T.ads), 'валовий прибуток − реклама', delta(T.gross - T.ads, PT.gross - PT.ads))}
+    ${kpi('Ціна підтвердженого', uah(T.cpc), `реклама / ${int(T.confirmed)} підтверджених`, delta(T.cpc, PT.cpc, { invert: true }))}
+  </div>
+  <div class="grid">
+    <section class="card c12"><div class="card-h"><div><h2 class="card-t">Канали</h2><div class="card-s">UTM-мітки: facebook/instagram → Meta, google → Google, tiktok → TikTok, sms/viber → Розсилки</div></div></div>${channelTable(rows)}</section>
+    <section class="card c7"><div class="card-h"><div><h2 class="card-t">Реклама і валовий прибуток</h2><div class="card-s">Окупається, поки помаранчеві стовпці вищі за сині</div></div>${groupSeg()}</div>
+      ${legend([['Реклама', css('--s1')], ['Валовий прибуток', css('--s2')]], true)}<div class="chart" style="margin-top:8px"><canvas id="cAds" aria-label="Реклама і валовий прибуток"></canvas></div></section>
+    <section class="card c5"><div class="card-h"><div><h2 class="card-t">Внести рекламу</h2><div class="card-s">Можна за день або одразу за тиждень</div></div></div>
+      <form class="form" id="adForm" style="grid-template-columns:1fr 1fr">
+        <label class="f">Дата<input type="date" name="date" required value="${ymd(new Date())}"></label>
+        <label class="f">По яку дату<input type="date" name="date_to"></label>
+        ${storeSelect('store_id', S.store)}
+        <label class="f">Канал<select name="channel">${(S.settings.ad_channels || []).map((c) => `<option>${esc(c)}</option>`).join('')}</select></label>
+        <label class="f">Сума<div style="display:flex;gap:6px"><input type="text" name="amount" inputmode="decimal" required placeholder="0"><select name="currency" style="width:84px"><option>USD</option><option>UAH</option><option>EUR</option></select></div></label>
+        <label class="f wide" style="grid-column:span 2">Коментар<input type="text" name="comment" placeholder="Напр. кампанія «Новий рік»"></label>
+        <button class="btn primary" style="grid-column:span 2;justify-content:center">${icon('plus')}Додати</button>
+      </form>
+      <div style="height:14px"></div>
+      <div class="tw tbl-scroll" style="max-height:260px">${expTable(adsList, true)}</div></section>
+  </div>`;
+  const draw = () => { const s = series(D.days, S.group); chart('cAds', 'bar', s.map((x) => x.label), [barDs('Реклама', s.map((x) => x.ads), css('--s1')), barDs('Валовий прибуток', s.map((x) => x.gross), css('--s2'))], uah); $$('[data-group] button').forEach((b) => b.classList.toggle('on', b.dataset.g === S.group)); };
+  draw(); bindGroup(draw);
+  $('#adForm').addEventListener('submit', async (e) => { e.preventDefault(); const f = Object.fromEntries(new FormData(e.target)); if (await saveExpense({ ...f, category: 'Реклама' })) { S.data = null; render(); } });
+  bindExpTable();
+};
+
+// ================================================================ МЕНЕДЖЕРИ
+PAGES.managers = async (seq) => {
+  const D = await loadPeriod(); if (seq !== renderSeq) return;
+  const rows = D.mstats.map((r) => {
+    const m = S.managers.find((x) => x.id === N(r.manager_id)) || {};
+    const pay = N(m.rate_per_order) * N(r.sales) + N(m.upsell_pct) * N(r.upsell);
+    return { ...r, name: mgrName(r.manager_id), m, pay, conv: div(N(r.success), N(r.leads)), refuse: div(N(r.fail) + N(r.returns), N(r.success) + N(r.fail) + N(r.returns)) };
+  }).filter((r) => N(r.leads) || N(r.sales)).sort((a, b) => N(b.revenue) - N(a.revenue));
+  const totalPay = rows.reduce((s, r) => s + r.pay, 0);
+  $('#page').innerHTML = `
+  <div class="kpis">
+    ${kpi('Зарплата менеджерів', uah(totalPay), S.settings.managers_in_pnl === false ? 'не враховується у прибутку' : 'враховано у чистому прибутку')}
+    ${kpi('Продажі', int(rows.reduce((s, r) => s + N(r.sales), 0)), `${rows.length} менеджерів`)}
+    ${kpi('Допродажі', uah(rows.reduce((s, r) => s + N(r.upsell), 0)), 'товари, додані менеджером')}
+    ${kpi('З/п на один продаж', uah(div(totalPay, rows.reduce((s, r) => s + N(r.sales), 0))), '')}
+  </div>
+  <div class="mgr-grid">${rows.map((r) => `
+    <section class="card mgr-card">
+      <div style="display:flex;gap:12px;align-items:center"><div class="ava">${esc((r.name || '?').slice(0, 1))}</div><div><div style="font-weight:650">${esc(r.name)}</div><div class="muted small">${r.m.rate_per_order ? `${uah2(N(r.m.rate_per_order))} за продаж` : 'ставку не задано'}${r.m.upsell_pct ? ` · ${pct(N(r.m.upsell_pct), 0)} допродажів` : ''}</div></div></div>
+      <div class="mgr-pay">${uah(r.pay)}</div>
+      <div class="stat-list">
+        <div class="stat-row"><span>Заявки</span><b>${int(N(r.leads))}</b></div>
+        <div class="stat-row"><span>Підтверджено</span><b>${int(N(r.confirmed))} <span class="muted small">${pct(div(N(r.confirmed), N(r.leads)), 0)}</span></b></div>
+        <div class="stat-row"><span>Продажі</span><b>${int(N(r.sales))}</b></div>
+        <div class="stat-row"><span>Конверсія заявок</span><b>${pct(r.conv, 0)}</b></div>
+        <div class="stat-row"><span>Відмови й повернення</span><b class="${r.refuse > 0.3 ? 'neg' : ''}">${pct(r.refuse, 0)}</b></div>
+        <div class="stat-row"><span>Виручка</span><b>${uah(N(r.revenue))}</b></div>
+        <div class="stat-row"><span>Допродажі</span><b>${uah(N(r.upsell))}</b></div>
+        <div class="stat-row"><span>Валовий прибуток</span><b>${uah(N(r.gross))}</b></div>
+      </div>
+    </section>`).join('') || '<div class="card"><div class="empty">Немає даних про менеджерів за період</div></div>'}</div>
+  <p class="muted small" style="margin-top:14px">Імена та ставки менеджерів задаються в Налаштуваннях.</p>`;
+};
+
+// ================================================================ ВИТРАТИ
+function expTable(list, compact = false) {
+  if (!list.length) return '<div class="empty">Записів немає</div>';
+  const showStore = activeStores().length > 1;
+  const showWho = list.some((e) => e.created_by);
+  return `<table class="t"><thead><tr><th>Дата</th>${showStore ? '<th>Магазин</th>' : ''}${compact ? '' : '<th>Категорія</th>'}<th>Канал</th><th class="n">Сума</th><th class="n">У гривнях</th>${compact ? '' : '<th>Коментар</th>'}${showWho ? '<th>Вніс</th>' : ''}<th></th></tr></thead><tbody>${list.map((e) => `<tr>
+    <td style="white-space:nowrap">${fdate(e.date)}${e.date_to ? ' – ' + fdate(e.date_to) : ''}</td>${showStore ? `<td>${e.store_id == null ? '<span class="muted">Загальна</span>' : esc(storeLabel(e.store_id))}</td>` : ''}${compact ? '' : `<td>${esc(e.category)}</td>`}<td>${esc(e.channel || '')}</td>
+    <td class="n">${nf2.format(N(e.amount))} ${e.currency === 'UAH' ? '₴' : esc(e.currency)}</td><td class="n">${uah(N(e.amount_uah))}</td>${compact ? '' : `<td class="muted small">${esc(e.comment || '')}</td>`}${showWho ? `<td class="muted small" title="${esc(e.created_by || '')}">${esc((e.created_by || '').split('@')[0])}</td>` : ''}
+    <td class="n" style="white-space:nowrap">${compact ? '' : `<button class="icon-btn" data-eedit="${e.id}" title="Редагувати">${icon('edit')}</button>`}<button class="icon-btn" data-edel="${e.id}" title="Видалити">${icon('trash')}</button></td></tr>`).join('')}</tbody></table>`;
+}
+function bindExpTable(list) {
+  $$('[data-edel]').forEach((b) => b.addEventListener('click', async () => {
+    if (!(await confirmBox('Видалити витрату?', 'Запис зникне зі звітів.'))) return;
+    await api.remove('expenses', N(b.dataset.edel)); S.data = null; toast('Видалено'); render();
+  }));
+  $$('[data-eedit]').forEach((b) => b.addEventListener('click', () => {
+    const e = (list || []).find((x) => x.id === N(b.dataset.eedit)); const f = $('#expForm'); if (!e || !f) return;
+    for (const k of ['date', 'date_to', 'category', 'channel', 'amount', 'currency', 'comment', 'store_id']) if (f[k]) f[k].value = e[k] ?? '';
+    f.dataset.id = e.id; $('#expSubmit').textContent = 'Зберегти зміни'; $('#expCancel').hidden = false; toggleChan(); f.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }));
+}
+function rateFor(cur) { return cur === 'USD' ? N(S.settings.usd_rate) || 41.5 : cur === 'EUR' ? N(S.settings.eur_rate) || 45 : 1; }
+async function saveExpense(f, id) {
+  const amount = parseFloat(String(f.amount || '').replace(/\s/g, '').replace(',', '.'));
+  if (!f.date || !Number.isFinite(amount) || !f.category) { toast('Заповніть дату, категорію і суму', true); return false; }
+  const row = { date: f.date, date_to: f.date_to && f.date_to > f.date ? f.date_to : null, category: f.category, channel: f.category === 'Реклама' ? (f.channel || 'Інше') : null,
+    amount, currency: f.currency || 'UAH', rate: rateFor(f.currency || 'UAH'), comment: f.comment || null,
+    store_id: f.store_id === undefined ? (S.store ?? null) : (f.store_id === '' ? null : N(f.store_id)) };
+  try { if (id) await api.update('expenses', N(id), row); else await api.insert('expenses', row); toast(id ? 'Зміни збережено' : 'Витрату додано'); return true; }
+  catch (e) { toast(e.message, true); return false; }
+}
+function storeSelect(name, selected, allowGeneral = true) {
+  if (!activeStores().length) return '';
+  const opts = (allowGeneral ? [['', 'Загальна (усі магазини)']] : []).concat(activeStores().map((x) => [String(x.id), x.name || 'Сайт #' + x.id]));
+  return `<label class="f">Магазин<select name="${name}">${opts.map(([v, t]) => `<option value="${v}" ${String(selected ?? '') === v ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>`;
+}
+function toggleChan() { const f = $('#expForm'); if (f) $('#chanF').hidden = f.category.value !== 'Реклама'; }
+
+PAGES.expenses = async (seq) => {
+  const D = await loadPeriod(); if (seq !== renderSeq) return;
+  const T = D.T;
+  const cats = S.settings.expense_categories || ['Реклама', 'Інше'];
+  const byCat = { ...T.byCat };
+  const totalExp = Object.values(byCat).reduce((a, b) => a + b, 0);
+  const kindL = { percent_revenue: (v) => pct(N(v) / 100, 2) + ' від виручки', fixed_monthly: (v) => uah2(N(v)) + ' на місяць', per_order: (v) => uah2(N(v)) + ' за продаж' };
+  $('#page').innerHTML = `
+  <div class="grid">
+    <section class="card c12"><div class="card-h"><div><h2 class="card-t">Додати витрату</h2><div class="card-s">Суму за тиждень або місяць можна внести одним записом: вкажіть «по яку дату», і вона рівномірно розподілиться по днях. Долари переводяться за курсом із налаштувань (${nf2.format(rateFor('USD'))} ₴).</div></div></div>
+      <form class="form" id="expForm">
+        <label class="f">Дата<input type="date" name="date" required value="${ymd(new Date())}"></label>
+        <label class="f">По яку дату<input type="date" name="date_to"></label>
+        ${storeSelect('store_id', S.store)}
+        <label class="f">Категорія<select name="category">${cats.map((c) => `<option>${esc(c)}</option>`).join('')}</select></label>
+        <label class="f" id="chanF">Канал<select name="channel">${(S.settings.ad_channels || []).map((c) => `<option>${esc(c)}</option>`).join('')}</select></label>
+        <label class="f">Сума<input type="text" name="amount" inputmode="decimal" required placeholder="0"></label>
+        <label class="f">Валюта<select name="currency"><option>UAH</option><option>USD</option><option>EUR</option></select></label>
+        <label class="f wide">Коментар<input type="text" name="comment" placeholder="Необов'язково"></label>
+        <div style="display:flex;gap:8px"><button class="btn primary" id="expSubmit">${icon('plus')}Додати</button><button type="button" class="btn" id="expCancel" hidden>Скасувати</button></div>
+      </form></section>
+    <section class="card c8"><div class="card-h"><div><h2 class="card-t">Внесені витрати</h2><div class="card-s">Записи, що зачіпають період ${fdate(S.from)} – ${fdate(S.to)}</div></div></div><div class="tw tbl-scroll">${expTable(D.expenses)}</div></section>
+    <section class="card c4"><div class="card-h"><div><h2 class="card-t">Усі витрати періоду</h2><div class="card-s">Ручні + автоматичні правила + з/п менеджерів</div></div></div>
+      ${hbars(Object.entries(byCat).sort((a, b) => b[1] - a[1]).map(([c, v]) => ({ name: c, a: v, val: uah(v), tip: `${c}: ${uah2(Math.round(v * 100) / 100)}` })))}
+      <div class="hb" style="border-top:1px solid var(--line);margin-top:6px;padding-top:10px;font-weight:700"><div>Разом</div><div></div><div class="val">${uah(totalExp)}</div></div>
+      <div class="muted small" style="margin-top:6px">Це ${pct(div(totalExp, T.revenue), 0)} від виручки</div></section>
+    <section class="card c12"><div class="card-h"><div><h2 class="card-t">Автоматичні витрати</h2><div class="card-s">Рахуються самі кожного дня: податок від виручки, фіксовані платежі на місяць, витрати на кожен продаж</div></div></div>
+      <div class="tw"><table class="t"><thead><tr><th>Назва</th><th>Розмір</th><th>Магазин</th><th>Категорія</th><th>Діє</th><th class="n">За період</th><th>Статус</th><th></th></tr></thead><tbody>${S.rules.map((r) => `<tr>
+        <td><b>${esc(r.name)}</b></td><td>${kindL[r.kind](r.value)}</td><td>${r.store_id == null ? '<span class="muted">Усі</span>' : esc(storeLabel(r.store_id))}</td><td>${esc(r.category)}</td><td class="muted small">${r.date_from ? 'з ' + fdate(r.date_from) : 'завжди'}${r.date_to ? ' по ' + fdate(r.date_to) : ''}</td>
+        <td class="n">${D.T.byRule[r.id] != null ? uah(D.T.byRule[r.id]) : '<span class="muted">—</span>'}</td>
+        <td><button class="btn sm ${r.active ? '' : 'ghost'}" data-rtoggle="${r.id}">${r.active ? '<span class="flag good">Увімкнено</span>' : '<span class="flag warn">Вимкнено</span>'}</button></td>
+        <td class="n" style="white-space:nowrap"><button class="icon-btn" data-redit="${r.id}" title="Редагувати">${icon('edit')}</button><button class="icon-btn" data-rdel="${r.id}" title="Видалити">${icon('trash')}</button></td></tr>`).join('') || '<tr><td colspan="8" class="empty">Правил ще немає. Додайте, наприклад, «Єдиний податок — 5% від виручки».</td></tr>'}</tbody></table></div>
+      <form class="form" id="ruleForm" style="margin-top:14px">
+        <label class="f">Назва<input type="text" name="name" required placeholder="Єдиний податок"></label>
+        <label class="f">Тип<select name="kind"><option value="percent_revenue">% від виручки</option><option value="fixed_monthly">Сума на місяць, ₴</option><option value="per_order">За кожен продаж, ₴</option></select></label>
+        <label class="f">Значення<input type="text" name="value" inputmode="decimal" required placeholder="5"></label>
+        ${storeSelect('store_id', null).replace('Загальна (усі магазини)', 'Усі магазини')}
+        <label class="f">Категорія<select name="category">${cats.filter((c) => c !== 'Реклама').map((c) => `<option>${esc(c)}</option>`).join('')}</select></label>
+        <label class="f">Діє з<input type="date" name="date_from"></label>
+        <label class="f">Діє до<input type="date" name="date_to"></label>
+        <div style="display:flex;gap:8px"><button class="btn primary" id="ruleSubmit">${icon('plus')}Додати правило</button><button type="button" class="btn" id="ruleCancel" hidden>Скасувати</button></div>
+      </form></section>
+  </div>`;
+  const f = $('#expForm');
+  f.category.value = S.lastCat || 'Реклама'; toggleChan();
+  f.category.addEventListener('change', toggleChan);
+  f.addEventListener('submit', async (e) => { e.preventDefault(); const v = Object.fromEntries(new FormData(f)); S.lastCat = v.category; if (await saveExpense(v, f.dataset.id)) { S.data = null; render(); } });
+  $('#expCancel').addEventListener('click', () => { S.data = S.data; render(); });
+  bindExpTable(D.expenses);
+  const rf = $('#ruleForm');
+  rf.addEventListener('submit', async (e) => {
+    e.preventDefault(); const v = Object.fromEntries(new FormData(rf)); const value = parseFloat(String(v.value).replace(',', '.'));
+    if (!v.name || !Number.isFinite(value)) return toast('Вкажіть назву і значення', true);
+    const row = { name: v.name, kind: v.kind, value, category: v.category, date_from: v.date_from || null, date_to: v.date_to || null, store_id: v.store_id ? N(v.store_id) : null };
+    try { if (rf.dataset.id) await api.update('rules', N(rf.dataset.id), row); else await api.insert('rules', { ...row, active: true }); S.rules = await api.list('rules'); S.data = null; toast('Правило збережено'); render(); } catch (err) { toast(err.message, true); }
+  });
+  $('#ruleCancel').addEventListener('click', () => render());
+  $$('[data-rtoggle]').forEach((b) => b.addEventListener('click', async () => { const r = S.rules.find((x) => x.id === N(b.dataset.rtoggle)); await api.update('rules', r.id, { active: !r.active }); S.rules = await api.list('rules'); S.data = null; render(); }));
+  $$('[data-rdel]').forEach((b) => b.addEventListener('click', async () => { if (!(await confirmBox('Видалити правило?', 'Ця витрата більше не рахуватиметься у звітах.'))) return; await api.remove('rules', N(b.dataset.rdel)); S.rules = await api.list('rules'); S.data = null; render(); }));
+  $$('[data-redit]').forEach((b) => b.addEventListener('click', () => { const r = S.rules.find((x) => x.id === N(b.dataset.redit)); for (const k of ['name', 'kind', 'value', 'category', 'date_from', 'date_to', 'store_id']) if (rf[k]) rf[k].value = r[k] ?? ''; rf.dataset.id = r.id; $('#ruleSubmit').textContent = 'Зберегти правило'; $('#ruleCancel').hidden = false; rf.scrollIntoView({ behavior: 'smooth', block: 'center' }); }));
+};
+function ruleTotal(r, D) {
+  if (!r.active) return 0;
+  let v = 0;
+  for (const [d, x] of Object.entries(D.days)) {
+    if ((r.date_from && d < r.date_from) || (r.date_to && d > r.date_to)) continue;
+    v += r.kind === 'percent_revenue' ? x.revenue * N(r.value) / 100 : r.kind === 'fixed_monthly' ? N(r.value) / dim(d) : N(r.value) * x.sales;
+  }
+  return v;
+}
+
+// ================================================================ НАЛАШТУВАННЯ
+PAGES.settings = async (seq) => {
+  const [log, meta] = await Promise.all([api.list('sync_log'), api.rpc('stats_overview_meta', {})]);
+  S.statuses = await api.list('statuses'); S.managers = await api.list('managers'); S.stores = await api.list('stores');
+  if (seq !== renderSeq) return;
+  const st = S.settings, m = Array.isArray(meta) ? meta[0] : meta, tg = st.targets || {};
+  const backfill = st.backfill_done === false || st.backfill_done === 'false';
+  $('#page').innerHTML = `
+  <div class="grid">
+    <section class="card c6"><div class="card-h"><div><h2 class="card-t">Синхронізація з SalesDrive</h2><div class="card-s">Автоматично кожні 15 хвилин. Підтягуються нові та змінені замовлення.</div></div></div>
+      <div class="stat-list">
+        <div class="stat-row"><span>Стан</span><b>${backfill ? '<span class="flag warn">Завантажується історія</span>' : '<span class="flag good">Працює</span>'}</b></div>
+        <div class="stat-row"><span>Остання синхронізація</span><b>${fdt(st.last_sync)}</b></div>
+        <div class="stat-row"><span>Замовлень у базі</span><b>${int(N(m?.orders))}${m?.first_order ? ` <span class="muted small">з ${fdate(String(m.first_order).slice(0, 10))}</span>` : ''}</b></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn yellow" id="sNow">${icon('sync')}Оновити зараз</button></div>
+      <div class="hint" style="margin-top:14px"><b>Перезавантажити період.</b> Якщо ви змінили старі замовлення в SalesDrive (собівартість, статуси) і хочете оновити їх тут.
+        <div class="form" style="margin-top:10px;grid-template-columns:1fr 1fr auto"><label class="f">З<input type="date" id="rFrom" value="${addDays(ymd(new Date()), -30)}"></label><label class="f">По<input type="date" id="rTo" value="${ymd(new Date())}"></label><button class="btn" id="rGo">Перезавантажити</button></div>
+        <div class="progress" id="rProg" hidden style="margin-top:10px"><i></i></div><div class="small muted" id="rMsg" style="margin-top:6px"></div></div>
+      <div class="tw" style="margin-top:12px"><table class="t"><thead><tr><th>Коли</th><th class="n">Замовлень</th><th>Результат</th></tr></thead><tbody>${log.map((l) => `<tr><td style="white-space:nowrap">${fdt(l.at)}</td><td class="n">${int(N(l.orders))}</td><td class="${l.ok ? '' : 'neg'} small">${esc(l.message || '')}</td></tr>`).join('') || '<tr><td colspan="3" class="empty">Ще не було запусків</td></tr>'}</tbody></table></div></section>
+
+    <section class="card c6"><div class="card-h"><div><h2 class="card-t">Основне</h2></div></div>
+      <div class="form" style="grid-template-columns:1fr 1fr">
+        <label class="f" style="grid-column:span 2">Назва в меню<input type="text" id="sName" value="${esc(st.store_name || '')}" placeholder="Магазин конструкторів"></label>
+        <label class="f">Курс долара, ₴<input type="text" id="sUsd" inputmode="decimal" value="${esc(st.usd_rate ?? '')}"></label>
+        <label class="f">Курс євро, ₴<input type="text" id="sEur" inputmode="decimal" value="${esc(st.eur_rate ?? '')}"></label>
+      </div>
+      <div style="margin-top:14px;font-size:12px;color:var(--ink-2);font-weight:500">Коли рахувати гроші від продажу</div>
+      <label style="display:flex;gap:10px;margin:8px 0;align-items:flex-start"><input type="radio" name="fin" value="order" ${fin() === 'order' ? 'checked' : ''}><span><b>За датою заявки.</b> <span class="muted small">Замовлення від 30.09, викуплене 03.10, потрапить у вересень. Реклама і продажі порівнюються найточніше.</span></span></label>
+      <label style="display:flex;gap:10px;margin:8px 0;align-items:flex-start"><input type="radio" name="fin" value="payment" ${fin() === 'payment' ? 'checked' : ''}><span><b>За датою продажу.</b> <span class="muted small">Гроші потрапляють у день, коли замовлення стало продажем у SalesDrive.</span></span></label>
+      <label style="display:flex;gap:10px;margin:12px 0 4px;align-items:center"><input type="checkbox" id="sMgr" ${st.managers_in_pnl !== false ? 'checked' : ''}><span>Віднімати зарплату менеджерів від прибутку</span></label>
+      <div style="margin-top:14px;font-size:12px;color:var(--ink-2);font-weight:500">Цілі (підсвічуються зеленим або червоним)</div>
+      <div class="form" style="grid-template-columns:1fr 1fr 1fr;margin-top:6px">
+        <label class="f">ROMI не менше, %<input type="text" id="tRomi" inputmode="decimal" value="${tg.romi != null ? Math.round(tg.romi * 100) : ''}"></label>
+        <label class="f">Ціна продажу до, ₴<input type="text" id="tCpo" inputmode="decimal" value="${tg.cpo ?? ''}"></label>
+        <label class="f">Конверсія від, %<input type="text" id="tConv" inputmode="decimal" value="${tg.conversion != null ? Math.round(tg.conversion * 100) : ''}"></label>
+      </div>
+      <label class="f" style="margin-top:12px">Категорії витрат (через кому)<input type="text" id="sCats" value="${esc((st.expense_categories || []).join(', '))}"></label>
+      <label class="f" style="margin-top:10px">Рекламні канали (через кому)<input type="text" id="sChans" value="${esc((st.ad_channels || []).join(', '))}"></label>
+      <div style="margin-top:14px"><button class="btn primary" id="sSave">Зберегти</button></div></section>
+
+    <section class="card c7"><div class="card-h"><div><h2 class="card-t">Статуси SalesDrive</h2><div class="card-s">Що означає кожен статус. Від цього залежать продажі, конверсія і прибуток. «Підтверджене» — статуси, які рахуються як підтверджені замовлення.</div></div></div>
+      <div class="tw"><table class="t"><thead><tr><th>Статус</th><th>Як рахувати</th><th>Підтверджене</th></tr></thead><tbody>${S.statuses.map((s) => `<tr><td>${esc(s.name)} ${s.manual ? '<span class="muted small">змінено вручну</span>' : ''}</td><td><select data-st="${s.id}" style="max-width:220px">${Object.entries(CAT).map(([k, v]) => `<option value="${k}" ${k === s.category ? 'selected' : ''}>${v}</option>`).join('')}</select></td><td><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-conf="${s.id}" ${s.confirmed ? 'checked' : ''}>так</label></td></tr>`).join('') || '<tr><td colspan="3" class="empty">Статуси з’являться після першої синхронізації</td></tr>'}</tbody></table></div></section>
+
+    <section class="card c5"><div class="card-h"><div><h2 class="card-t">Менеджери</h2><div class="card-s">З’являються автоматично із замовлень. Вкажіть імена і ставки.</div></div></div>
+      <div class="tw"><table class="t"><thead><tr><th>ID</th><th>Ім’я</th><th>₴ за продаж</th><th>% допрод.</th></tr></thead><tbody>${S.managers.map((mg) => `<tr data-mg="${mg.id}"><td class="muted">${mg.id}</td><td><input type="text" data-f="name" value="${esc(mg.name || '')}" placeholder="Ім’я"></td><td><input type="text" data-f="rate_per_order" inputmode="decimal" value="${N(mg.rate_per_order) || ''}" style="width:80px"></td><td><input type="text" data-f="upsell_pct" inputmode="decimal" value="${N(mg.upsell_pct) ? Math.round(N(mg.upsell_pct) * 100) : ''}" style="width:70px"></td></tr>`).join('') || '<tr><td colspan="4" class="empty">Поки немає</td></tr>'}</tbody></table></div>
+      ${S.managers.length ? '<div style="margin-top:12px"><button class="btn primary" id="mgSave">Зберегти менеджерів</button></div>' : ''}</section>
+
+    <section class="card c12"><div class="card-h"><div><h2 class="card-t">Магазини</h2><div class="card-s">Кожен сайт із SalesDrive (поле «Сайт» у заявці) — окремий магазин. Нові сайти з’являються тут самі після синхронізації. Дайте їм назви; сайти, які не належать до конструкторів, вимкніть.</div></div></div>
+      <div class="tw"><table class="t"><thead><tr><th>Сайт у SalesDrive</th><th>Назва магазину</th><th class="n">Замовлень</th><th>Рахувати у звітах</th></tr></thead><tbody>${S.stores.map((x) => { const site = (m?.sites || []).find((z) => N(z.id) === x.id); return `<tr data-shop="${x.id}"><td class="muted">#${x.id}</td><td><input type="text" data-f="name" value="${esc(x.name || '')}" placeholder="Назва" style="max-width:320px"></td><td class="n">${int(N(site?.orders))}</td><td><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-f="active" ${x.active !== false ? 'checked' : ''}>так</label></td></tr>`; }).join('') || '<tr><td colspan="4" class="empty">Магазини з’являться після першої синхронізації</td></tr>'}</tbody></table></div>
+      ${(m?.sites || []).some((z) => z.id == null) ? `<div class="hint" style="margin-top:10px">Замовлень без сайту: ${int(N((m.sites.find((z) => z.id == null) || {}).orders))}. Вони враховуються лише в режимі «Усі магазини».</div>` : ''}
+      ${S.stores.length ? '<div style="margin-top:12px"><button class="btn primary" id="shopSave">Зберегти магазини</button></div>' : ''}</section>
+  </div>`;
+
+  $('#sNow').addEventListener('click', () => runSync({}));
+  $('#rGo').addEventListener('click', async () => {
+    const from = $('#rFrom').value, to = $('#rTo').value; if (!from || !to || from > to) return toast('Вкажіть період', true);
+    $('#rProg').hidden = false; let page = 1, n = 0, guard = 0;
+    try {
+      for (;;) {
+        $('#rMsg').textContent = `Сторінка ${page}…`; $('#rProg i').style.width = Math.min(95, 10 + guard * 12) + '%';
+        const r = await api.sync({ mode: 'range', dateFrom: from, dateTo: to, page });
+        n += N(r.orders);
+        if (!r.more || !r.nextPage || ++guard > 40) break;
+        page = r.nextPage;
+      }
+      $('#rProg i').style.width = '100%'; $('#rMsg').textContent = `Готово: оновлено ${int(n)} замовлень`; S.data = null; await loadRefs();
+    } catch (e) { $('#rMsg').textContent = 'Помилка: ' + e.message; }
+  });
+  $('#sSave').addEventListener('click', async () => {
+    const split = (s) => s.split(',').map((x) => x.trim()).filter(Boolean);
+    const numv = (id) => { const v = parseFloat(String($(id).value).replace(',', '.')); return Number.isFinite(v) ? v : null; };
+    const cats = split($('#sCats').value); if (!cats.includes('Реклама')) cats.unshift('Реклама');
+    const upd = {
+      store_name: $('#sName').value.trim() || 'Магазин конструкторів', usd_rate: numv('#sUsd') || 41.5, eur_rate: numv('#sEur') || 45,
+      finance_date: $('input[name=fin]:checked')?.value || 'order', managers_in_pnl: $('#sMgr').checked,
+      targets: { romi: numv('#tRomi') != null ? numv('#tRomi') / 100 : null, cpo: numv('#tCpo'), conversion: numv('#tConv') != null ? numv('#tConv') / 100 : null },
+      expense_categories: cats, ad_channels: split($('#sChans').value),
+    };
+    try { for (const [k, v] of Object.entries(upd)) await api.setSetting(k, v); Object.assign(S.settings, upd); S.data = null; $('.logo-t').textContent = upd.store_name; toast('Налаштування збережено'); }
+    catch (e) { toast(e.message, true); }
+  });
+  $$('[data-conf]').forEach((cb) => cb.addEventListener('change', async () => {
+    try { await api.update('statuses', N(cb.dataset.conf), { confirmed: cb.checked, manual: true }); S.data = null; toast('Збережено. Звіти перераховано.'); } catch (e) { toast(e.message, true); }
+  }));
+  $$('[data-st]').forEach((sel) => sel.addEventListener('change', async () => {
+    try { await api.update('statuses', N(sel.dataset.st), { category: sel.value, manual: true }); S.data = null; toast('Збережено. Звіти перераховано.'); } catch (e) { toast(e.message, true); }
+  }));
+  $('#shopSave')?.addEventListener('click', async () => {
+    try {
+      for (const tr of $$('[data-shop]')) await api.update('stores', N(tr.dataset.shop), { name: $('[data-f="name"]', tr).value.trim() || null, active: $('[data-f="active"]', tr).checked });
+      S.stores = await api.list('stores'); S.data = null; toast('Магазини збережено');
+    } catch (e) { toast(e.message, true); }
+  });
+  $('#mgSave')?.addEventListener('click', async () => {
+    try {
+      for (const tr of $$('[data-mg]')) {
+        const v = (f) => $(`[data-f="${f}"]`, tr).value.trim(); const n = (f) => parseFloat(v(f).replace(',', '.')) || 0;
+        await api.update('managers', N(tr.dataset.mg), { name: v('name') || null, rate_per_order: n('rate_per_order'), upsell_pct: n('upsell_pct') / 100 });
+      }
+      S.managers = await api.list('managers'); S.data = null; toast('Менеджерів збережено');
+    } catch (e) { toast(e.message, true); }
+  });
+};
+
+// ---------------------------------------------------------------- синхронізація
+async function runSync(body) {
+  const btn = $('#syncBtn'); btn.disabled = true; $('#syncPill .dot').classList.add('spin'); $('#syncPill span').textContent = 'Оновлюю…';
+  try {
+    const r = await api.sync(body);
+    toast(r.success === false ? 'Помилка: ' + r.error : (r.message || 'Готово'), r.success === false);
+    await loadRefs(); S.data = null; render();
+  } catch (e) { toast('Помилка синхронізації: ' + e.message, true); }
+  finally { btn.disabled = false; $('#syncPill .dot')?.classList.remove('spin'); updateSyncPill(); }
+}
+
+// ---------------------------------------------------------------- реальний час
+let liveTimer = null, livePending = false;
+function onRemoteChange(table) {
+  clearTimeout(liveTimer);
+  liveTimer = setTimeout(async () => {
+    try { await loadRefs(); } catch { return; }
+    S.data = null; updateSyncPill();
+    const el = document.activeElement;
+    const typing = el && el.closest && el.closest('#page form, #page [data-mg], #page [data-shop]') && ['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName);
+    if (typing) { livePending = true; showLiveBar(); return; }
+    render(); toast(table === 'sync_log' ? 'Підтягнулися нові замовлення' : 'Дані оновлено: зміни від іншого користувача');
+  }, 900);
+}
+function showLiveBar() {
+  if ($('#liveBar')) return;
+  const b = document.createElement('div'); b.id = 'liveBar'; b.className = 'hint'; b.style.cssText = 'margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:10px';
+  b.innerHTML = '<span>Хтось інший змінив дані. Оновіть сторінку, коли закінчите вводити.</span><button class="btn sm primary">Оновити</button>';
+  b.querySelector('button').addEventListener('click', () => { livePending = false; b.remove(); render(); });
+  $('#page').before(b);
+}
+
+// ---------------------------------------------------------------- підказки
+document.addEventListener('pointermove', (e) => {
+  const tip = $('#tip'); const el = e.target.closest?.('[data-tip]');
+  if (!el || !el.dataset.tip) { tip.style.display = 'none'; return; }
+  tip.textContent = el.dataset.tip; tip.style.display = 'block';
+  tip.style.left = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8) + 'px'; tip.style.top = (e.clientY + 16) + 'px';
+});
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => render());
+new MutationObserver(() => render()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+// ---------------------------------------------------------------- вхід і старт
+function loginView(err = '') {
+  $('#app').innerHTML = `<div class="login"><form id="loginF" autocomplete="on">${LOGO}<h1>Аналітика магазину</h1><div class="muted small">Увійдіть обліковим записом, створеним у Supabase</div>
+    <label class="f">Email<input type="email" name="email" id="lEmail" required autocomplete="username"></label>
+    <label class="f">Пароль<input type="password" name="password" id="lPass" required autocomplete="current-password"></label>
+    <div class="err" id="lErr">${esc(err)}</div><button class="btn primary" style="justify-content:center">Увійти</button></form></div>`;
+  $('#loginF').addEventListener('submit', async (e) => {
+    e.preventDefault(); const f = e.target;
+    try { S.user = await api.signIn(f.email.value.trim(), f.password.value); boot(); } catch (err2) { $('#lErr').textContent = err2.message; }
+  });
+}
+async function boot() {
+  if (CONFIG.SUPABASE_URL && !window.supabase) { $('#app').innerHTML = '<div class="login"><form><h1>Немає з’єднання</h1><div class="muted">Не вдалося завантажити бібліотеку Supabase. Перевірте інтернет і оновіть сторінку.</div></form></div>'; return; }
+  S.user = S.user || (await api.session());
+  if (!S.user) return loginView();
+  try { await loadRefs(); } catch (e) { return loginView('Немає доступу до бази: ' + e.message); }
+  const h = location.hash.slice(1); if (TITLES[h]) S.page = h;
+  shell(); render();
+  if (api.subscribe) api.subscribe(onRemoteChange);
+  setInterval(async () => { try { S.settings = await api.settings(); updateSyncPill(); } catch { /* ok */ } }, 5 * 60e3);
+}
+boot();
+})();
+
+</script>
+</body>
+</html>
