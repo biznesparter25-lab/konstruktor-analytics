@@ -274,7 +274,7 @@ table.t .name { max-width: 340px; overflow: hidden; text-overflow: ellipsis; whi
 .toast { position: fixed; left: 50%; bottom: 22px; transform: translate(-50%, 20px); background: var(--ink); color: var(--surface); padding: 10px 16px; border-radius: 10px; font-size: 13px; opacity: 0; pointer-events: none; transition: all .2s; z-index: 100; max-width: calc(100vw - 32px); }
 .toast.on { opacity: 1; transform: translate(-50%, 0); }
 .toast.err { background: var(--bad); color: #fff; }
-.tip { position: fixed; z-index: 90; pointer-events: none; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-pop); border-radius: 8px; padding: 6px 10px; font-size: 12.5px; display: none; max-width: 280px; }
+.tip { white-space: pre-line; position: fixed; z-index: 90; pointer-events: none; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-pop); border-radius: 8px; padding: 6px 10px; font-size: 12.5px; display: none; max-width: 280px; }
 .modal-bg { position: fixed; inset: 0; background: rgba(10,11,13,.45); display: grid; place-items: center; z-index: 80; padding: 16px; }
 .modal { background: var(--surface); border-radius: 16px; box-shadow: var(--shadow-pop); padding: 20px; width: 100%; max-width: 380px; }
 .modal h3 { margin: 0 0 6px; font-size: 16px; }
@@ -313,6 +313,30 @@ table.t .name { max-width: 340px; overflow: hidden; text-overflow: ellipsis; whi
   .pl .bc, .pl td.p { display: none; }
   .form .wide { grid-column: auto; }
 }
+
+/* розбивка витрат */
+.has-tip { border-bottom: 1px dotted var(--ink-3); cursor: help; }
+.exp-h { display: flex; justify-content: space-between; margin-top: 12px; padding: 8px 0 4px; border-top: 1px solid var(--line); font-size: 12px; font-weight: 650; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); }
+.exp-h b { color: var(--ink); font-size: 13px; text-transform: none; letter-spacing: 0; }
+.exp-list .stat-row span:first-child { color: var(--ink-2); }
+/* налаштування стовпців */
+.col-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 13px; border: 1px solid transparent; background: var(--surface); }
+.col-row:not(.fixed) { cursor: grab; }
+.col-row:not(.fixed):hover { background: var(--surface-2); }
+.col-row.fixed { opacity: .6; }
+.col-row .grip { width: 16px; height: 16px; color: var(--ink-3); display: inline-flex; }
+.col-row .grip svg { width: 16px; height: 16px; }
+.col-row .nm { flex: 1; }
+.col-row input { accent-color: var(--s1); width: 15px; height: 15px; margin: 0; }
+.col-row .arr { display: inline-flex; gap: 2px; }
+.col-row .arr button { border: 0; background: none; width: 24px; height: 24px; border-radius: 6px; cursor: pointer; color: var(--ink-2); display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+.col-row .arr button:hover:not(:disabled) { background: var(--surface-3, var(--line)); }
+.col-row .arr button:disabled { opacity: .25; cursor: default; }
+.col-row .arr svg { width: 15px; height: 15px; }
+.col-row .arr .dn svg { transform: rotate(180deg); }
+.col-row.dragging { opacity: .4; }
+.col-row.over-top { border-top: 2px solid var(--s1); border-radius: 0; }
+.col-row.over-bot { border-bottom: 2px solid var(--s1); border-radius: 0; }
 
 </style>
 </head>
@@ -682,6 +706,9 @@ const I = {
   trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   dl: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  cols: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M15 4v16"/>',
+  grip: '<path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01" stroke-width="3"/>',
+  up: '<path d="m6 15 6-6 6 6"/>',
 };
 const icon = (n) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[n]}</svg>`;
 const LOGO = `<svg class="logo-mark" viewBox="0 0 34 34" aria-hidden="true"><rect x="1" y="9" width="32" height="22" rx="4" fill="#ffc21a"/><rect x="5" y="4" width="9" height="7" rx="2.5" fill="#ffc21a"/><rect x="20" y="4" width="9" height="7" rx="2.5" fill="#ffc21a"/><rect x="1" y="9" width="32" height="3" fill="#e0a800"/><path d="M8 22h4l3-5 4 9 3-4h4" fill="none" stroke="#111318" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
@@ -716,7 +743,7 @@ function createLiveApi() {
     // Зміни від інших користувачів у реальному часі
     subscribe(cb) {
       sb.channel('dashboard-live')
-        .on('postgres_changes', { event: '*', schema: 'public' }, (p) => cb(p.table, p))
+        .on('postgres_changes', { event: '*', schema: 'public' }, (p) => { if (p.table === 'settings' && String(p.new?.key || p.old?.key || '').startsWith('ui_')) return; cb(p.table, p); })
         .subscribe((status) => { S.live = status === 'SUBSCRIBED'; updateSyncPill(); });
     },
     async sync(body = {}, fn = CONFIG.SYNC_FUNCTION) {
@@ -786,6 +813,9 @@ function buildDays(from, to, daily, expenses, rules, mgrDaily, managers, setting
   }
   return days;
 }
+// Розбивка «Інших витрат» по категоріях (для підказки та карток магазинів)
+const otherCats = (t) => Object.entries(t.byCat || {}).filter(([c, v]) => c !== 'Реклама' && Math.abs(v) >= 0.5).sort((a, b) => b[1] - a[1]);
+const otherTip = (t) => otherCats(t).map(([c, v]) => `${c}: ${uah(v)}`).join('\n');
 function totals(list) {
   const t = emptyDay();
   for (const x of list) {
@@ -1005,6 +1035,7 @@ function go(p) {
 let renderSeq = 0;
 async function render() {
   const seq = ++renderSeq;
+  if (S.page !== 'days') document.querySelector('.cols-pop')?.remove();
   const [t, s] = TITLES[S.page]; $('#pageT').textContent = t;
   const usesStore = !['settings', 'stores', 'salary'].includes(S.page) && activeStores().length > 1;
   $('#pageS').textContent = s + (usesStore ? ' · ' + (S.store == null ? 'усі магазини' : storeLabel(S.store)) : '');
@@ -1216,12 +1247,17 @@ PAGES.stores = async (seq) => {
         <div class="stat-row"><span>Виручка</span><b>${uah(T.revenue)}</b></div>
         <div class="stat-row"><span>Середній чек</span><b>${uah(T.avg)}</b></div>
         <div class="stat-row"><span>Валовий прибуток</span><b>${uah(T.gross)} <span class="muted small">${pct(T.grossMargin, 0)}</span></b></div>
-        <div class="stat-row"><span>Реклама</span><b>${uah(T.ads)} <span class="muted small">ДРР ${pct(T.drr, 0)}</span></b></div>
         <div class="stat-row"><span>ROMI</span><b>${T.romi == null ? '—' : `<span class="flag ${T.romi >= (tg.romi ?? 1) ? 'good' : T.romi >= 0 ? 'warn' : 'bad'}">${pct(T.romi, 0)}</span>`}</b></div>
         <div class="stat-row"><span>Ціна продажу</span><b>${uah(T.cpo)}</b></div>
         <div class="stat-row"><span>Відмови й повернення</span><b>${int(T.fail + T.returns)} <span class="muted small">${pct(T.refuseRate, 0)}</span></b></div>
-        <div class="stat-row"><span>Доставка відмов</span><b class="${T.return_costs ? 'neg' : ''}">${uah(T.return_costs)}</b></div>
-        <div class="stat-row"><span>Інші витрати магазину</span><b>${uah(T.other)}</b></div>
+      </div>
+      <div class="exp-h"><span>Витрати магазину</span><b>${uah(T.cogs + T.order_costs + T.return_costs + T.ads + T.other)}</b></div>
+      <div class="stat-list exp-list">
+        <div class="stat-row"><span>Собівартість товарів</span><b>${uah(T.cogs)}</b></div>
+        <div class="stat-row"><span>Доставка й комісії (з CRM)</span><b>${uah(T.order_costs)}</b></div>
+        <div class="stat-row"><span>Доставка відмов</span><b>${uah(T.return_costs)}</b></div>
+        <div class="stat-row"><span>Реклама</span><b>${uah(T.ads)} <span class="muted small">ДРР ${pct(T.drr, 0)}</span></b></div>
+        ${otherCats(T).map(([c, v]) => `<div class="stat-row"><span>${esc(c)}</span><b>${uah(v)}</b></div>`).join('')}
       </div>
       <button class="btn sm" style="margin-top:12px" data-open="${r.st.id}">Відкрити огляд магазину</button>
     </section>`; }).join('')}
@@ -1252,16 +1288,77 @@ PAGES.stores = async (seq) => {
 };
 
 // ================================================================ ПО ДНЯХ
+// Порядок і видимість стовпців — окремо для кожного користувача, зберігається в базі (settings)
+const layoutKey = () => 'ui_days_cols:' + (S.user?.email || 'demo');
+const getLayout = () => { const v = S.settings[layoutKey()]; return v && Array.isArray(v.order) ? v : { order: [], hidden: [] }; };
+function daysLayout(allCols) {
+  const L = getLayout(); const byName = new Map(allCols.map((c) => [c[0], c]));
+  const order = [...L.order.filter((n) => byName.has(n) && n !== 'Дата'), ...allCols.map((c) => c[0]).filter((n) => n !== 'Дата' && !L.order.includes(n))];
+  return [allCols[0], ...order.filter((n) => !(L.hidden || []).includes(n)).map((n) => byName.get(n))];
+}
+let layoutSaveT = null;
+function saveLayout(L) {
+  S.settings[layoutKey()] = L;
+  clearTimeout(layoutSaveT);
+  layoutSaveT = setTimeout(() => api.setSetting(layoutKey(), L).catch((e) => toast('Не вдалося зберегти стовпці: ' + e.message, true)), 500);
+}
+function openColsPanel(btn, allCols) {
+  if (document.querySelector('.cols-pop')) { document.querySelector('.cols-pop').remove(); return; }
+  const names = () => { const L = getLayout(); const rest = allCols.map((c) => c[0]).filter((n) => n !== 'Дата'); return [...L.order.filter((n) => rest.includes(n)), ...rest.filter((n) => !L.order.includes(n))]; };
+  const pop = document.createElement('div'); pop.className = 'pop cols-pop';
+  const draw = () => {
+    const L = getLayout(); const hidden = new Set(L.hidden || []); const list = names();
+    pop.innerHTML = `<div style="padding:6px 8px 4px"><div style="font-weight:650">Стовпці таблиці</div><div class="muted small">Перетягніть, щоб змінити порядок. Зніміть галочку, щоб сховати.</div></div>
+      <div class="col-row fixed"><span class="grip"></span><input type="checkbox" checked disabled><span class="nm">Дата</span><span class="muted small">завжди перша</span></div>
+      ${list.map((n, i) => `<div class="col-row" draggable="true" data-col="${esc(n)}"><span class="grip">${icon('grip')}</span><input type="checkbox" ${hidden.has(n) ? '' : 'checked'} data-ck="${esc(n)}"><span class="nm">${esc(n)}</span><span class="arr"><button data-mv="-1" data-i="${i}" ${i === 0 ? 'disabled' : ''} aria-label="Вище">${icon('up')}</button><button data-mv="1" data-i="${i}" ${i === list.length - 1 ? 'disabled' : ''} aria-label="Нижче" class="dn">${icon('up')}</button></span></div>`).join('')}
+      <div style="display:flex;justify-content:space-between;padding:8px 6px 4px"><button class="btn sm" id="colReset">Скинути</button><button class="btn sm primary" id="colDone">Готово</button></div>`;
+  };
+  const apply = (order, hidden) => { saveLayout({ order, hidden }); draw(); rerenderTable(); };
+  const rerenderTable = () => render();
+  draw();
+  document.body.appendChild(pop);
+  pop.style.position = 'fixed'; pop.style.width = '300px'; pop.style.zIndex = '60'; pop.style.maxHeight = (innerHeight - 24) + 'px'; pop.style.overflowY = 'auto';
+  const place = () => { const b = $('#colsBtn') || btn; const rc = b.getBoundingClientRect(); pop.style.left = Math.max(8, Math.min(rc.right - 300, innerWidth - 308)) + 'px'; pop.style.top = Math.max(8, Math.min(rc.bottom + 6, innerHeight - pop.offsetHeight - 8)) + 'px'; };
+  place();
+  pop.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const mv = e.target.closest('[data-mv]');
+    if (mv) { const list = names(); const i = N(mv.dataset.i), j = i + N(mv.dataset.mv); [list[i], list[j]] = [list[j], list[i]]; apply(list, getLayout().hidden || []); return; }
+    if (e.target.id === 'colReset') { apply([], []); return; }
+    if (e.target.id === 'colDone') pop.remove();
+  });
+  pop.addEventListener('change', (e) => {
+    const ck = e.target.closest('[data-ck]'); if (!ck) return;
+    const hidden = new Set(getLayout().hidden || []); if (ck.checked) hidden.delete(ck.dataset.ck); else hidden.add(ck.dataset.ck);
+    apply(names(), [...hidden]);
+  });
+  let dragName = null;
+  pop.addEventListener('dragstart', (e) => { const r = e.target.closest('[data-col]'); if (!r) return; dragName = r.dataset.col; r.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', dragName); } catch { /* ok */ } });
+  pop.addEventListener('dragover', (e) => { const r = e.target.closest('[data-col]'); if (!r || !dragName) return; e.preventDefault(); $$('.col-row', pop).forEach((x) => x.classList.remove('over-top', 'over-bot')); const rc = r.getBoundingClientRect(); r.classList.add(e.clientY < rc.top + rc.height / 2 ? 'over-top' : 'over-bot'); });
+  pop.addEventListener('dragend', () => { dragName = null; $$('.col-row', pop).forEach((x) => x.classList.remove('dragging', 'over-top', 'over-bot')); });
+  pop.addEventListener('drop', (e) => {
+    const r = e.target.closest('[data-col]'); if (!r || !dragName) return; e.preventDefault();
+    const rc = r.getBoundingClientRect(); const after = e.clientY >= rc.top + rc.height / 2;
+    const list = names().filter((n) => n !== dragName); let idx = list.indexOf(r.dataset.col); if (idx < 0) return; if (after) idx++;
+    list.splice(idx, 0, dragName); dragName = null; apply(list, getLayout().hidden || []);
+  });
+  pop.addEventListener('keydown', (e) => { if (e.key === 'Escape') pop.remove(); });
+  setTimeout(() => document.addEventListener('click', function h(ev) { if (!document.body.contains(pop)) { document.removeEventListener('click', h); return; } if (!pop.contains(ev.target) && ev.target.id !== 'colsBtn') { pop.remove(); document.removeEventListener('click', h); } }), 0);
+}
+
 PAGES.days = async (seq) => {
   const D = await loadPeriod(); if (seq !== renderSeq) return;
   const rows = Object.entries(D.days).map(([d, x]) => ({ d, ...totals([x]) })).reverse();
   const T = D.T;
-  const cols = [
+  const allCols = [
     ['Дата', (r) => `<b>${fdate(r.d)}</b> <span class="muted small">${['нд', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'][P(r.d).getUTCDay()]}</span>`],
     ['Заявки', (r) => int(r.leads), 1], ['Підтв.', (r) => `<b>${int(r.confirmed)}</b>`, 1], ['Не підтв.', (r) => (r.unconfirmed ? `<span class="warn-t">${int(r.unconfirmed)}</span>` : '0'), 1], ['% підтв.', (r) => pct(r.confRate, 0), 1], ['Продажі', (r) => int(r.sales), 1], ['Відмови', (r) => (r.fail ? `<span class="neg">${int(r.fail)}</span>` : '0'), 1], ['Повер.', (r) => int(r.returns), 1], ['Доставка відмов', (r) => (r.return_costs ? `<span class="neg">${uah(r.return_costs)}</span>` : '<span class="muted">0 ₴</span>'), 1],
     ['Конверсія', (r) => pct(r.conv, 0), 1], ['Виручка', (r) => uah(r.revenue), 1], ['Собівартість', (r) => uah(r.cogs), 1], ['Валовий', (r) => uah(r.gross), 1],
-    ['Реклама', (r) => (r.d ? `<button class="cell-edit" data-adday="${r.d}" title="Натисніть, щоб внести рекламу за цей день">${r.ads ? uah(r.ads) : '<span class="muted">+ внести</span>'}${icon('edit')}</button>` : uah(r.ads)), 1], ['Інші витрати', (r) => uah(r.other), 1], ['Чистий прибуток', (r) => `<b class="${r.net < 0 ? 'neg' : ''}">${uah(r.net)}</b>`, 1], ['Ціна продажу', (r) => uah(r.cpo), 1],
+    ['Реклама', (r) => (r.d ? `<button class="cell-edit" data-adday="${r.d}" title="Натисніть, щоб внести рекламу за цей день">${r.ads ? uah(r.ads) : '<span class="muted">+ внести</span>'}${icon('edit')}</button>` : uah(r.ads)), 1],
+    ['Інші витрати', (r) => { const t = otherTip(r); return t ? `<span class="has-tip" data-tip="${esc(t)}">${uah(r.other)}</span>` : uah(r.other); }, 1],
+    ['Чистий прибуток', (r) => `<b class="${r.net < 0 ? 'neg' : ''}">${uah(r.net)}</b>`, 1], ['Ціна продажу', (r) => uah(r.cpo), 1],
   ];
+  const cols = daysLayout(allCols);
   $('#page').innerHTML = `
   <div class="kpis">
     ${kpi('Чистий прибуток', `<span class="${T.net < 0 ? 'neg' : ''}">${uah(T.net)}</span>`, `В середньому ${uah(T.net / Math.max(1, rows.length))} на день`, delta(T.net, D.PT.net))}
@@ -1271,15 +1368,17 @@ PAGES.days = async (seq) => {
     ${kpi('Реклама', uah(T.ads), `${uah(T.ads / Math.max(1, rows.length))} на день`, delta(T.ads, D.PT.ads, { invert: true }))}
     ${kpi('Підтверджені', int(T.confirmed), `${pct(T.confRate, 0)} заявок · ціна ${uah(T.cpc)}`, delta(T.confRate, D.PT.confRate, { points: true }))}
   </div>
-  <section class="card"><div class="card-h"><div><h2 class="card-t">Щоденний звіт</h2><div class="card-s">Реклама й витрати, внесені за період, розподілені по днях</div></div><button class="btn sm" id="csv">${icon('dl')}CSV</button></div>
+  <section class="card"><div class="card-h"><div><h2 class="card-t">Щоденний звіт</h2><div class="card-s">Реклама й витрати, внесені за період, розподілені по днях</div></div><div style="display:flex;gap:8px"><button class="btn sm" id="colsBtn">${icon('cols')}Стовпці</button><button class="btn sm" id="csv">${icon('dl')}CSV</button></div></div>
     <div class="tw tbl-scroll"><table class="t"><thead><tr>${cols.map((c) => `<th class="${c[2] ? 'n' : ''}">${c[0]}</th>`).join('')}</tr></thead>
     <tbody>${rows.map((r) => `<tr>${cols.map((c) => `<td class="${c[2] ? 'n' : ''}">${c[1](r)}</td>`).join('')}</tr>`).join('')}</tbody>
     <tfoot><tr>${cols.map((c, i) => `<td class="${c[2] ? 'n' : ''}">${i === 0 ? 'Разом' : c[1]({ d: '', ...T })}</td>`).join('')}</tr></tfoot></table></div></section>`;
-  $('#page').addEventListener('click', (e) => { const b = e.target.closest('[data-adday]'); if (b) openAdCell(b, b.dataset.adday, D); });
+  S.daysD = D;
+  $('#colsBtn').addEventListener('click', (e) => { e.stopPropagation(); openColsPanel($('#colsBtn'), allCols); });
   $('#csv').addEventListener('click', () => downloadCsv(`dni_${S.from}_${S.to}.csv`, ['Дата', 'Заявки', 'Підтверджені', 'Не підтверджені', 'Продажі', 'Відмови', 'Повернення', 'Виручка', 'Собівартість', 'Доставка/комісії', 'Валовий', 'Реклама', 'Інші витрати', 'Чистий'],
     rows.map((r) => [r.d, r.leads, r.confirmed, r.unconfirmed, r.sales, r.fail, r.returns, r.revenue.toFixed(2), r.cogs.toFixed(2), r.order_costs.toFixed(2), r.gross.toFixed(2), r.ads.toFixed(2), r.other.toFixed(2), r.net.toFixed(2)])));
 };
 
+document.addEventListener('click', (e) => { const b = e.target.closest?.('#page [data-adday]'); if (b && S.daysD) openAdCell(b, b.dataset.adday, S.daysD); });
 // Швидке внесення реклами прямо в таблиці «По днях»
 const QUICK = 'По днях';
 function openAdCell(btn, day, D) {
