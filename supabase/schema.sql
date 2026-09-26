@@ -115,6 +115,11 @@ create table if not exists rules (
   active    boolean not null default true
 );
 alter table rules add column if not exists store_id int;
+-- Комісія платіжної системи: % від оплаченої суми замовлень з обраним способом оплати + фікс. сума за платіж
+alter table rules add column if not exists method text;
+alter table rules add column if not exists value2 numeric(14,4) not null default 0;
+alter table rules drop constraint if exists rules_kind_check;
+alter table rules add constraint rules_kind_check check (kind in ('percent_revenue','fixed_monthly','per_order','percent_payment'));
 alter table rules add column if not exists created_by text default (auth.jwt() ->> 'email');
 
 -- ---------- Зарплата: люди і виплати ----------
@@ -430,6 +435,25 @@ language sql stable as $$
   from orders o join statuses s on s.id = o.status_id
   where in_scope(o.sajt, p_store) and s.category = 'success' and o.manager_id is not null and fin_date(o, p_fin) between p_from and p_to
   group by 1, 2
+$$;
+
+-- Оплати по днях і способах оплати (для комісій WayForPay, накладеного платежу тощо).
+-- Беремо фактично оплачену суму, за датою створення замовлення.
+create or replace function stats_payment_daily(p_from date, p_to date, p_store int default null)
+returns table (day date, method text, cnt int, amount numeric)
+language sql stable as $$
+  select o.order_date, coalesce(nullif(o.payment_method,''),'—'), count(*)::int, sum(o.payed_amount)
+  from orders o left join statuses s on s.id = o.status_id
+  where in_scope(o.sajt, p_store) and o.order_date between p_from and p_to
+    and coalesce(s.category,'work') <> 'ignore' and o.payed_amount > 0
+  group by 1, 2
+$$;
+
+-- Усі способи оплати, що зустрічаються в замовленнях
+create or replace function payment_methods()
+returns table (method text, cnt int)
+language sql stable as $$
+  select coalesce(nullif(payment_method,''),'—'), count(*)::int from orders group by 1 order by 2 desc
 $$;
 
 -- Приклади даних доставки для перевірки (останні відмови з ТТН)

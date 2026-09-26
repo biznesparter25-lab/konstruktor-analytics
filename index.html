@@ -529,6 +529,11 @@ function createDemoApi() {
       const list = scoped(p_store).filter((o) => cat(o) === 'success' && inR(fin(o, p_fin), p_from, p_to));
       return group(list, (o) => fin(o, p_fin) + '|' + o.manager_id, (k) => ({ day: k.split('|')[0], manager_id: Number(k.split('|')[1]), sales: 0, upsell: 0 }), (x, o) => { x.sales++; x.upsell += o.upsell_amount; });
     },
+    stats_payment_daily({ p_from, p_to, p_store }) {
+      const list = scoped(p_store).filter((o) => inR(o.order_date, p_from, p_to) && cat(o) !== 'ignore' && o.payed_amount > 0);
+      return group(list, (o) => o.order_date + '|' + o.payment_method, (k) => ({ day: k.split('|')[0], method: k.split('|')[1], cnt: 0, amount: 0 }), (x, o) => { x.cnt++; x.amount += o.payed_amount; });
+    },
+    payment_methods() { return group(orders, (o) => o.payment_method || '—', (k) => ({ method: k, cnt: 0 }), (x) => { x.cnt++; }).sort((a, b) => b.cnt - a.cnt); },
     delivery_sample() {
       return orders.filter((o) => ['fail', 'return'].includes(cat(o)) && o.ttn).slice(-5).reverse().map((o) => ({ id: o.id, order_date: o.order_date, status: statuses.find((x) => x.id === o.status_id)?.name, ttn: o.ttn, sajt: o.sajt, delivery_cost: o.delivery_cost, delivery_json: { trackingNumber: o.ttn, provider: 'novaposhta', cost: o.delivery_cost, statusCode: 102 } }));
     },
@@ -728,7 +733,7 @@ const channelOf = (u) => { if (!u) return 'Без мітки'; for (const [n, re
 function emptyDay() { return { pending: 0, leads: 0, confirmed: 0, unconfirmed: 0, success: 0, fail: 0, returns: 0, work: 0, sales: 0, revenue: 0, cogs: 0, order_costs: 0, return_costs: 0, payed: 0, upsell: 0, ads: 0, other: 0, byCat: {}, adsByCh: {}, byRule: {} }; }
 
 // Будує денний P&L: дані замовлень + ручні витрати + правила + з/п менеджерів
-function buildDays(from, to, daily, expenses, rules, mgrDaily, managers, settings, storeDays = {}) {
+function buildDays(from, to, daily, expenses, rules, mgrDaily, managers, settings, storeDays = {}, payMap = {}) {
   const days = {};
   for (let d = from; d <= to; d = addDays(d, 1)) days[d] = emptyDay();
   for (const r of daily) {
@@ -753,8 +758,11 @@ function buildDays(from, to, daily, expenses, rules, mgrDaily, managers, setting
     for (const r of rules) {
       if (!r.active || (r.date_from && d < r.date_from) || (r.date_to && d > r.date_to)) continue;
       // правило конкретного магазину в режимі «Усі» рахуємо від виручки саме цього магазину
-      const base = r.store_id != null && storeDays[r.store_id] ? (storeDays[r.store_id][d] || { revenue: 0, sales: 0 }) : x;
-      const v = r.kind === 'percent_revenue' ? base.revenue * N(r.value) / 100 : r.kind === 'fixed_monthly' ? N(r.value) / dim(d) : N(r.value) * base.sales;
+      const sd = r.store_id != null ? storeDays[r.store_id] : null;
+      const base = sd ? (sd.days[d] || { revenue: 0, sales: 0 }) : x;
+      let v;
+      if (r.kind === 'percent_payment') { const pm = ((sd ? sd.pay : payMap)[d] || {})[r.method] || { amount: 0, cnt: 0 }; v = pm.amount * N(r.value) / 100 + pm.cnt * N(r.value2); }
+      else v = r.kind === 'percent_revenue' ? base.revenue * N(r.value) / 100 : r.kind === 'fixed_monthly' ? N(r.value) / dim(d) : N(r.value) * base.sales;
       if (v) { x.other += v; add(x, r.category, v); x.byRule[r.id] = (x.byRule[r.id] || 0) + v; }
     }
   }
@@ -848,6 +856,7 @@ const storeLabel = (id) => (id == null ? 'Загальна' : (S.stores.find((x)
 // «% від виручки» і «за продаж» (рахуються від його виручки). Загальні витрати не діляться.
 const scopeExpenses = (list, st) => (st == null ? list : list.filter((e) => N(e.store_id) === st && e.store_id != null));
 const scopeRules = (list, st) => (st == null ? list : list.filter((r) => (r.store_id != null && N(r.store_id) === st) || (r.store_id == null && r.kind !== 'fixed_monthly')));
+function payMapOf(rows) { const m = {}; for (const r of rows || []) { const d = String(r.day).slice(0, 10); (m[d] = m[d] || {})[r.method] = { amount: N(r.amount), cnt: N(r.cnt) }; } return m; }
 function dayMap(rows) { const m = {}; for (const r of rows) m[String(r.day).slice(0, 10)] = { revenue: N(r.revenue), sales: N(r.sales) }; return m; }
 
 // Денний звіт за період для магазину st (null = усі)
@@ -861,15 +870,17 @@ async function fetchDays(from, to, st = S.store) {
   const rules = scopeRules([...S.rules, ...teamRules()], st);
   const needStores = st == null ? [...new Set(rules.filter((r) => r.active && r.store_id != null && r.kind !== 'fixed_monthly').map((r) => N(r.store_id)))] : [];
   const pr = { p_from: from, p_to: to, p_fin: fin(), p_store: st };
-  const [daily, mgrDaily, expAll, ...sd] = await Promise.all([
+  const hasPay = rules.some((r) => r.active && r.kind === 'percent_payment');
+  const [daily, mgrDaily, payRows, expAll, ...sd] = await Promise.all([
     api.rpc('stats_daily', pr), api.rpc('stats_manager_daily', pr),
+    hasPay ? api.rpc('stats_payment_daily', { p_from: from, p_to: to, p_store: st }).catch(() => []) : Promise.resolve([]),
     Promise.all([api.list('expenses', { from, to }), api.list('payouts', { from, to }).catch(() => [])]).then(([e, p]) => [e, payoutsAsExpenses(p)]),
-    ...needStores.map((id) => api.rpc('stats_daily', { ...pr, p_store: id })),
+    ...needStores.map((id) => Promise.all([api.rpc('stats_daily', { ...pr, p_store: id }), hasPay ? api.rpc('stats_payment_daily', { p_from: from, p_to: to, p_store: id }).catch(() => []) : []])),
   ]);
   const expenses = scopeExpenses(expAll[0], st);
   const teamExp = scopeExpenses(expAll[1], st);
-  const storeDays = Object.fromEntries(needStores.map((id, i) => [id, dayMap(sd[i])]));
-  return { days: buildDays(from, to, daily, [...expenses, ...teamExp], rules, mgrDaily, S.managers, S.settings, storeDays), expenses };
+  const storeDays = Object.fromEntries(needStores.map((id, i) => [id, { days: dayMap(sd[i][0]), pay: payMapOf(sd[i][1]) }]));
+  return { days: buildDays(from, to, daily, [...expenses, ...teamExp], rules, mgrDaily, S.managers, S.settings, storeDays, payMapOf(payRows)), expenses };
 }
 
 async function loadPeriod(force = false) {
@@ -1493,11 +1504,12 @@ function toggleChan() { const f = $('#expForm'); if (f) $('#chanF').hidden = f.c
 
 PAGES.expenses = async (seq) => {
   const D = await loadPeriod(); if (seq !== renderSeq) return;
+  D.methods = D.methods || await api.rpc('payment_methods', {}).catch(() => []); if (seq !== renderSeq) return;
   const T = D.T;
   const cats = (S.settings.expense_categories || ['Реклама', 'Інше']).filter((c) => !/^зарплат/i.test(c));
   const byCat = { ...T.byCat };
   const totalExp = Object.values(byCat).reduce((a, b) => a + b, 0);
-  const kindL = { percent_revenue: (v) => pct(N(v) / 100, 2) + ' від виручки', fixed_monthly: (v) => uah2(N(v)) + ' на місяць', per_order: (v) => uah2(N(v)) + ' за продаж' };
+  const kindL = { percent_revenue: (v) => pct(N(v) / 100, 2) + ' від виручки', fixed_monthly: (v) => uah2(N(v)) + ' на місяць', per_order: (v) => uah2(N(v)) + ' за продаж', percent_payment: (v, r) => `${pct(N(v) / 100, 2)}${N(r.value2) ? ' + ' + uah2(N(r.value2)) : ''} від оплат «${esc(r.method || '—')}»` };
   $('#page').innerHTML = `
   <div class="grid">
     <section class="card c12"><div class="card-h"><div><h2 class="card-t">Додати витрату</h2><div class="card-s">Суму за тиждень або місяць можна внести одним записом: вкажіть «по яку дату», і вона рівномірно розподілиться по днях. Долари переводяться за курсом із налаштувань (${nf2.format(rateFor('USD'))} ₴).</div></div></div>
@@ -1517,16 +1529,18 @@ PAGES.expenses = async (seq) => {
       ${hbars(Object.entries(byCat).sort((a, b) => b[1] - a[1]).map(([c, v]) => ({ name: c, a: v, val: uah(v), tip: `${c}: ${uah2(Math.round(v * 100) / 100)}` })))}
       <div class="hb" style="border-top:1px solid var(--line);margin-top:6px;padding-top:10px;font-weight:700"><div>Разом</div><div></div><div class="val">${uah(totalExp)}</div></div>
       <div class="muted small" style="margin-top:6px">Це ${pct(div(totalExp, T.revenue), 0)} від виручки</div></section>
-    <section class="card c12"><div class="card-h"><div><h2 class="card-t">Автоматичні витрати</h2><div class="card-s">Рахуються самі кожного дня: податок від виручки, фіксовані платежі на місяць, витрати на кожен продаж</div></div></div>
+    <section class="card c12"><div class="card-h"><div><h2 class="card-t">Автоматичні витрати</h2><div class="card-s">Рахуються самі кожного дня: податок від виручки, фіксовані платежі на місяць, витрати на кожен продаж, комісії платіжних систем (WayForPay, накладений платіж)</div></div></div>
       <div class="tw"><table class="t"><thead><tr><th>Назва</th><th>Розмір</th><th>Магазин</th><th>Категорія</th><th>Діє</th><th class="n">За період</th><th>Статус</th><th></th></tr></thead><tbody>${S.rules.map((r) => `<tr>
-        <td><b>${esc(r.name)}</b></td><td>${kindL[r.kind](r.value)}</td><td>${r.store_id == null ? '<span class="muted">Усі</span>' : esc(storeLabel(r.store_id))}</td><td>${esc(r.category)}</td><td class="muted small">${r.date_from ? 'з ' + fdate(r.date_from) : 'завжди'}${r.date_to ? ' по ' + fdate(r.date_to) : ''}</td>
+        <td><b>${esc(r.name)}</b></td><td>${kindL[r.kind](r.value, r)}</td><td>${r.store_id == null ? '<span class="muted">Усі</span>' : esc(storeLabel(r.store_id))}</td><td>${esc(r.category)}</td><td class="muted small">${r.date_from ? 'з ' + fdate(r.date_from) : 'завжди'}${r.date_to ? ' по ' + fdate(r.date_to) : ''}</td>
         <td class="n">${D.T.byRule[r.id] != null ? uah(D.T.byRule[r.id]) : '<span class="muted">—</span>'}</td>
         <td><button class="btn sm ${r.active ? '' : 'ghost'}" data-rtoggle="${r.id}">${r.active ? '<span class="flag good">Увімкнено</span>' : '<span class="flag warn">Вимкнено</span>'}</button></td>
         <td class="n" style="white-space:nowrap"><button class="icon-btn" data-redit="${r.id}" title="Редагувати">${icon('edit')}</button><button class="icon-btn" data-rdel="${r.id}" title="Видалити">${icon('trash')}</button></td></tr>`).join('') || '<tr><td colspan="8" class="empty">Правил ще немає. Додайте, наприклад, «Єдиний податок — 5% від виручки».</td></tr>'}</tbody></table></div>
       <form class="form" id="ruleForm" style="margin-top:14px">
         <label class="f">Назва<input type="text" name="name" required placeholder="Єдиний податок"></label>
-        <label class="f">Тип<select name="kind"><option value="percent_revenue">% від виручки</option><option value="fixed_monthly">Сума на місяць, ₴</option><option value="per_order">За кожен продаж, ₴</option></select></label>
+        <label class="f">Тип<select name="kind"><option value="percent_revenue">% від виручки</option><option value="fixed_monthly">Сума на місяць, ₴</option><option value="per_order">За кожен продаж, ₴</option><option value="percent_payment">Комісія за спосіб оплати, %</option></select></label>
         <label class="f">Значення<input type="text" name="value" inputmode="decimal" required placeholder="5"></label>
+        <label class="f" data-pm hidden>Спосіб оплати<select name="method">${(D.methods || []).map((m) => `<option value="${esc(m.method)}">${esc(m.method)} (${int(N(m.cnt))})</option>`).join('')}</select></label>
+        <label class="f" data-pm hidden>+ за кожен платіж, ₴<input type="text" name="value2" inputmode="decimal" placeholder="0"></label>
         ${storeSelect('store_id', null).replace('Загальна (усі магазини)', 'Усі магазини')}
         <label class="f">Категорія<select name="category">${cats.filter((c) => c !== 'Реклама').map((c) => `<option>${esc(c)}</option>`).join('')}</select></label>
         <label class="f">Діє з<input type="date" name="date_from"></label>
@@ -1541,16 +1555,19 @@ PAGES.expenses = async (seq) => {
   $('#expCancel').addEventListener('click', () => { S.data = S.data; render(); });
   bindExpTable(D.expenses);
   const rf = $('#ruleForm');
+  const togglePm = () => $$('[data-pm]', rf).forEach((el) => (el.hidden = rf.kind.value !== 'percent_payment'));
+  rf.kind.addEventListener('change', () => { togglePm(); if (rf.kind.value === 'percent_payment') { const o = [...rf.category.options].find((x) => /банк|еквайр|комісі/i.test(x.value)); if (o) rf.category.value = o.value; } });
   rf.addEventListener('submit', async (e) => {
     e.preventDefault(); const v = Object.fromEntries(new FormData(rf)); const value = parseFloat(String(v.value).replace(',', '.'));
     if (!v.name || !Number.isFinite(value)) return toast('Вкажіть назву і значення', true);
-    const row = { name: v.name, kind: v.kind, value, category: v.category, date_from: v.date_from || null, date_to: v.date_to || null, store_id: v.store_id ? N(v.store_id) : null };
+    const row = { name: v.name, kind: v.kind, value, category: v.category, date_from: v.date_from || null, date_to: v.date_to || null, store_id: v.store_id ? N(v.store_id) : null, method: v.kind === 'percent_payment' ? (v.method || null) : null, value2: v.kind === 'percent_payment' ? (parseFloat(String(v.value2 || '0').replace(',', '.')) || 0) : 0 };
+    if (v.kind === 'percent_payment' && !v.method) return toast('Оберіть спосіб оплати', true);
     try { if (rf.dataset.id) await api.update('rules', N(rf.dataset.id), row); else await api.insert('rules', { ...row, active: true }); S.rules = await api.list('rules'); S.data = null; toast('Правило збережено'); render(); } catch (err) { toast(err.message, true); }
   });
   $('#ruleCancel').addEventListener('click', () => render());
   $$('[data-rtoggle]').forEach((b) => b.addEventListener('click', async () => { const r = S.rules.find((x) => x.id === N(b.dataset.rtoggle)); await api.update('rules', r.id, { active: !r.active }); S.rules = await api.list('rules'); S.data = null; render(); }));
   $$('[data-rdel]').forEach((b) => b.addEventListener('click', async () => { if (!(await confirmBox('Видалити правило?', 'Ця витрата більше не рахуватиметься у звітах.'))) return; await api.remove('rules', N(b.dataset.rdel)); S.rules = await api.list('rules'); S.data = null; render(); }));
-  $$('[data-redit]').forEach((b) => b.addEventListener('click', () => { const r = S.rules.find((x) => x.id === N(b.dataset.redit)); for (const k of ['name', 'kind', 'value', 'category', 'date_from', 'date_to', 'store_id']) if (rf[k]) rf[k].value = r[k] ?? ''; rf.dataset.id = r.id; $('#ruleSubmit').textContent = 'Зберегти правило'; $('#ruleCancel').hidden = false; rf.scrollIntoView({ behavior: 'smooth', block: 'center' }); }));
+  $$('[data-redit]').forEach((b) => b.addEventListener('click', () => { const r = S.rules.find((x) => x.id === N(b.dataset.redit)); for (const k of ['name', 'kind', 'value', 'category', 'date_from', 'date_to', 'store_id', 'method', 'value2']) if (rf[k]) rf[k].value = r[k] ?? ''; togglePm(); rf.dataset.id = r.id; $('#ruleSubmit').textContent = 'Зберегти правило'; $('#ruleCancel').hidden = false; rf.scrollIntoView({ behavior: 'smooth', block: 'center' }); }));
 };
 function ruleTotal(r, D) {
   if (!r.active) return 0;
