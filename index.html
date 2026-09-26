@@ -284,7 +284,7 @@ table.t .name { max-width: 340px; overflow: hidden; text-overflow: ellipsis; whi
 .progress i { display: block; height: 100%; background: var(--brand); width: 0; transition: width .3s; }
 
 /* вхід */
-.login { min-height: 100%; display: grid; place-items: center; padding: 24px 16px; background: var(--nav-bg); }
+.login { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px; background: var(--nav-bg); }
 .login form { width: 100%; max-width: 360px; background: var(--surface); border-radius: 18px; padding: 26px; display: flex; flex-direction: column; gap: 12px; box-shadow: var(--shadow-pop); }
 .login h1 { font-family: var(--display); font-size: 19px; margin: 6px 0 0; font-weight: 600; }
 .login .err { color: var(--bad); font-size: 13px; min-height: 18px; }
@@ -644,6 +644,7 @@ const fdt = (iso) => { if (!iso) return '—'; const d = new Date(iso); return i
 const MONTHS = ['Січень', 'Лютий', 'Березень', 'Квітень', 'Травень', 'Червень', 'Липень', 'Серпень', 'Вересень', 'Жовтень', 'Листопад', 'Грудень'];
 const MON = ['січ', 'лют', 'бер', 'кві', 'тра', 'чер', 'лип', 'сер', 'вер', 'жов', 'лис', 'гру'];
 const CAT = { work: 'В роботі', success: 'Продаж', fail: 'Відмова', return: 'Повернення', ignore: 'Не враховувати' };
+const rememberBrand = (n) => { if (n) store.set('brand', n); return n; };
 const store = { get(k, d) { try { const v = localStorage.getItem('ca_' + k); return v == null ? d : JSON.parse(v); } catch { return d; } }, set(k, v) { try { localStorage.setItem('ca_' + k, JSON.stringify(v)); } catch { /* ok */ } } };
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 
@@ -927,7 +928,7 @@ function shell() {
   $('#app').innerHTML = `
   <div class="app">
     <aside class="side">
-      <div class="logo">${LOGO}<div><div class="logo-t">${esc(S.settings.store_name || 'Конструктори')}</div><div class="logo-s">Аналітика продажів</div></div></div>
+      <div class="logo">${LOGO}<div><div class="logo-t">${esc(rememberBrand(S.settings.store_name) || 'Конструктори')}</div><div class="logo-s">Аналітика продажів</div></div></div>
       <nav class="nav" aria-label="Розділи">${nav.map(([g, items]) => `<div class="nav-g">${g}</div>` + items.map(([id, t, ic]) => `<a data-page="${id}" class="${S.page === id ? 'on' : ''}" href="#${id}">${icon(ic)}<span>${t}</span></a>`).join('')).join('')}</nav>
       <div class="side-foot">
         <div class="sync-pill" id="syncPill"><i class="dot"></i><span>…</span></div>
@@ -1841,7 +1842,7 @@ PAGES.settings = async (seq) => {
       targets: { romi: numv('#tRomi') != null ? numv('#tRomi') / 100 : null, cpo: numv('#tCpo'), conversion: numv('#tConv') != null ? numv('#tConv') / 100 : null },
       expense_categories: cats, ad_channels: split($('#sChans').value),
     };
-    try { for (const [k, v] of Object.entries(upd)) await api.setSetting(k, v); Object.assign(S.settings, upd); S.data = null; $('.logo-t').textContent = upd.store_name; toast('Налаштування збережено'); }
+    try { for (const [k, v] of Object.entries(upd)) await api.setSetting(k, v); Object.assign(S.settings, upd); S.data = null; $('.logo-t').textContent = rememberBrand(upd.store_name); toast('Налаштування збережено'); }
     catch (e) { toast(e.message, true); }
   });
   $$('[data-conf]').forEach((cb) => cb.addEventListener('change', async () => {
@@ -1911,7 +1912,7 @@ new MutationObserver(() => render()).observe(document.documentElement, { attribu
 
 // ---------------------------------------------------------------- вхід і старт
 function loginView(err = '') {
-  $('#app').innerHTML = `<div class="login"><form id="loginF" autocomplete="on">${LOGO}<h1>Аналітика магазину</h1><div class="muted small">Увійдіть обліковим записом, створеним у Supabase</div>
+  $('#app').innerHTML = `<div class="login"><form id="loginF" autocomplete="on">${LOGO}<h1>${esc(store.get('brand', '') || 'Аналітика продажів')}</h1><div class="muted small">Увійдіть, щоб переглянути аналітику</div>
     <label class="f">Email<input type="email" name="email" id="lEmail" required autocomplete="username"></label>
     <label class="f">Пароль<input type="password" name="password" id="lPass" required autocomplete="current-password"></label>
     <div class="err" id="lErr">${esc(err)}</div><button class="btn primary" style="justify-content:center">Увійти</button></form></div>`;
